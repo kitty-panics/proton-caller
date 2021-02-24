@@ -18,14 +18,15 @@ Please create an issue on the [Github](https://github.com/caverym/Proton-Caller)
 ## Usage:
 
 ```
-Usage: proton-all VERSION PROGRAM
+Usage: proton-call VERSION PROGRAM
    or: basename OPTION PATH PROGRAM
 Execute PROGRAM with Proton VERSION
 If specified, run proton PATH
 
-  -c, --custom PATH   use proton from PATH
-  --help              display this help message
-  --version           display version information
+  -c, --custom PATH       use proton from PATH
+  -h, --help              display this help message
+  -s, --setup             display setup information
+  -v, --version           display version information
 ```
 
 ```
@@ -62,7 +63,7 @@ or: (Requires Rust)
 ```
 git clone https://github.com/caverym/Proton-Caller.git
 cd Proton-Caller
-cargo b --release --lock
+cargo b --release --locked
 sudo install -Dm 755 target/release/proton-call /usr/bin/proton-call 
 ```
 
