@@ -28,7 +28,7 @@ impl Proton {
             Err(e) => return Err(e),
         }
 
-        match Proton::locate_proton(&version, &config) {
+        match Proton::locate_proton(&version, &config.common) {
             Ok(val) => path = format!("{}/proton", val),
             Err(e) => return Err(e),
         }
@@ -68,8 +68,8 @@ impl Proton {
         true
     }
 
-    fn locate_proton(version: &str, config: &Config) -> Result<String, &'static str> {
-        let dir = std::fs::read_dir(&config.common).unwrap();
+    fn locate_proton(version: &str, common: &str) -> Result<String, &'static str> {
+        let dir = std::fs::read_dir(common).unwrap();
 
         for path in dir {
             let p = path.unwrap().path();
