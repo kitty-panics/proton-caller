@@ -1,7 +1,6 @@
 #![warn(clippy::all, clippy::pedantic)]
 pub(crate) struct Proton {
     program: String,
-    version: String,
     proton: String,
     arguments: Vec<String>,
     conf: Config,
@@ -29,7 +28,10 @@ impl Proton {
             Err(e) => return Err(e),
         }
 
-        path = format!("{}/Proton {}/proton", config.common, version);
+        match Proton::locate_proton(&version, &config) {
+            Ok(val) => path = format!("{}/proton", val),
+            Err(e) => return Err(e),
+        }
 
         if !Proton::check(&[&path, &args[2]]) {
             return Err("error: invalid Proton or executable");
@@ -39,7 +41,6 @@ impl Proton {
 
         Ok(Proton {
             program,
-            version,
             proton: path,
             arguments: a,
             conf: config,
@@ -67,6 +68,20 @@ impl Proton {
         true
     }
 
+    fn locate_proton(version: &str, config: &Config) -> Result<String, &'static str> {
+        let dir = std::fs::read_dir(&config.common).unwrap();
+
+        for path in dir {
+            let p = path.unwrap().path();
+            let d = p.to_str().unwrap();
+            if d.contains(version) {
+                println!("Proton:   {}", d.split('/').last().unwrap());
+                return Ok(d.to_string());
+            }
+        }
+        Err("error: invalid Proton version")
+    }
+
     fn init_custom(args: &[String]) -> Result<Proton, &str> {
         let config: Config;
         let args_len: usize = args.len();
@@ -86,9 +101,10 @@ impl Proton {
             Err(e) => return Err(e),
         }
 
+        println!("Proton:   custom");
+
         Ok(Proton {
             program: args[3].to_string(),
-            version: std::string::String::from("custom"),
             proton: path,
             arguments: a,
             conf: config,
@@ -96,7 +112,6 @@ impl Proton {
     }
 
     pub fn execute(self) -> Result<(), &'static str> {
-        println!("Proton:   {}", self.version);
         println!("Program:  {}\n", self.program.split('/').last().unwrap());
         let ecode: std::process::ExitStatus;
         let mut child: std::process::Child;
@@ -105,9 +120,10 @@ impl Proton {
         match std::process::Command::new(self.proton)
             .args(self.arguments)
             .env("STEAM_COMPAT_DATA_PATH", self.conf.data)
-            .spawn() {
-                Ok(val) => child = val,
-                Err(_) => return Err("error: failed to launch Proton"),
+            .spawn()
+        {
+            Ok(val) => child = val,
+            Err(_) => return Err("error: failed to launch Proton"),
         }
 
         match child.wait() {

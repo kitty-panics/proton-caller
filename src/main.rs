@@ -7,24 +7,25 @@ fn main() {
     let custom: bool;
 
     if args.len() == 1 {
-        missing_args();
+        println!("proton-call: missing arguments");
+        println!("Try 'proton-call --help' for more information");
         return;
     }
 
     match args[1].as_str() {
+        "--custom" | "-c" => custom = true,
         "--help" | "-h" => {
             help();
-            return;
-        }
-        "--version" | "-v" => {
-            pc_version();
             return;
         }
         "--setup" | "-s" => {
             setup();
             return;
         }
-        "--custom" | "-c" => custom = true,
+        "--version" | "-v" => {
+            pc_version();
+            return;
+        }
         _ => custom = false,
     }
 
@@ -58,11 +59,6 @@ fn pc_version() {
     println!("This program comes with ABSOLUTELY NO WARRANTY.");
     println!("This is free software, and you are welcome to redistribute it");
     println!("under certain conditions.\n")
-}
-
-fn missing_args() {
-    println!("proton-call: missing arguments");
-    println!("Try 'proton-call --help' for more information");
 }
 
 fn setup() {
