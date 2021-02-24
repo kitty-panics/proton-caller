@@ -107,12 +107,12 @@ impl Proton {
             .env("STEAM_COMPAT_DATA_PATH", self.conf.data)
             .spawn() {
                 Ok(val) => child = val,
-                Err(_) => return Err("failed to launch Proton"),
+                Err(_) => return Err("error: failed to launch Proton"),
         }
 
         match child.wait() {
             Ok(val) => ecode = val,
-            Err(_) => return Err("failed to wait for Proton"),
+            Err(_) => return Err("error: failed to wait for Proton"),
         }
 
         if !ecode.success() {
@@ -140,24 +140,26 @@ pub(crate) struct Config {
 impl Config {
     pub fn new() -> Result<Config, &'static str> {
         let config: Config;
-        let mut file: String;
+        let file: String;
 
-        file = std::env::var("HOME").unwrap();
-
-        file.push_str("/.config/proton.conf");
+        if let Ok(val) = std::env::var("XDG_CONFIG_HOME") {
+            file = format!("{}/proton.conf", val);
+        } else {
+            file = format!("{}/.config/proton.conf", std::env::var("HOME").unwrap());
+        }
 
         if !std::path::Path::new(&file).exists() {
             return Err("error: proton.conf does not exist");
         }
 
-        let strr: String;
+        let conf: String;
 
         match std::fs::read_to_string(file) {
-            Ok(string) => strr = string,
+            Ok(s) => conf = s,
             Err(_) => return Err("error: failed to read config"),
         }
 
-        match toml::from_str(strr.as_str()) {
+        match toml::from_str(&conf) {
             Ok(o) => config = o,
             Err(_) => return Err("error: failed to read config"),
         }
