@@ -61,7 +61,7 @@ or: (Requires Rust)
 ```
 git clone https://github.com/caverym/Proton-Caller.git
 cd Proton-Caller
-cargo b --release --lock
+cargo b --release --locked
 sudo install -Dm 755 target/release/proton-call /usr/bin/proton-call 
 ```
 
