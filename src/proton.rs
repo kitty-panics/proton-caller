@@ -1,7 +1,6 @@
 #![warn(clippy::all, clippy::pedantic)]
 
 pub(crate) struct Proton {
-    program: String,
     proton: String,
     arguments: Vec<String>,
     conf: Config,
@@ -31,11 +30,13 @@ impl Proton {
         }
 
         if let Ok(val) = Proton::locate_proton(&version, &config.common) {
-            path = format!("{}/proton", val);
+            path = val;
             program = args[2].to_string();
         } else {
             match Proton::locate_proton("5.13", &config.common) {
-                Ok(val) => path = format!("{}/proton", val),
+                Ok(val) => {
+                    path = val;
+                }
                 Err(e) => return Err(e),
             }
             program = args[1].to_string();
@@ -48,9 +49,10 @@ impl Proton {
 
         let a: Vec<String> = Proton::arguments(start, args_len, &args, &program);
 
+        println!("Proton:   {}", path.split('/').last().unwrap());
+        println!("Program:  {}", program.split('/').last().unwrap());
         Ok(Proton {
-            program,
-            proton: path,
+            proton: format!("{}/proton", path),
             arguments: a,
             conf: config,
         })
@@ -64,8 +66,6 @@ impl Proton {
         for i in start..end {
             vector[i - (start - 2)] = args[i].to_string();
         }
-
-        println!("{:?}", vector);
         vector
     }
 
@@ -85,7 +85,6 @@ impl Proton {
             let p = path.unwrap().path();
             let d = p.to_str().unwrap();
             if d.contains(version) {
-                println!("Proton:   {}", d.split('/').last().unwrap());
                 return Ok(d.to_string());
             }
         }
@@ -98,7 +97,8 @@ impl Proton {
         if args_len < 4 {
             return Err("error: not enough arguments");
         }
-        let path: String = format!("{}/proton", args[2].to_string());
+
+        let path: String = args[2].to_string();
 
         if !Proton::check([&path, &args[3]].to_vec()) {
             return Err("error: invalid Proton or executable");
@@ -112,20 +112,19 @@ impl Proton {
         }
 
         println!("Proton:   custom");
+        println!("Program:  {}", args[3].split('/').last().unwrap());
 
         Ok(Proton {
-            program: args[3].to_string(),
-            proton: path,
+            proton: format!("{}/proton", path),
             arguments: a,
             conf: config,
         })
     }
 
     pub fn execute(self) -> Result<(), &'static str> {
-        println!("Program:  {}\n", self.program.split('/').last().unwrap());
         let ecode: std::process::ExitStatus;
         let mut child: std::process::Child;
-        println!("________Proton________");
+        println!("\n________Proton________");
 
         match std::process::Command::new(self.proton)
             .args(self.arguments)
