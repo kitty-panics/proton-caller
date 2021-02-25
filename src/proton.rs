@@ -156,7 +156,7 @@ fn if_arg(the_arg: &str) -> bool {
     false
 }
 
-#[derive(serde_derive::Deserialize, serde_derive::Serialize, Debug)]
+#[derive(serde_derive::Deserialize)]
 pub(crate) struct Config {
     data: String,
     common: String,
