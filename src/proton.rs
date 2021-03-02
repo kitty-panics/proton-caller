@@ -1,5 +1,7 @@
 #![warn(clippy::all, clippy::pedantic)]
 
+use std::fs::ReadDir;
+
 pub(crate) struct Proton {
     proton: String,
     arguments: Vec<String>,
@@ -79,7 +81,11 @@ impl Proton {
     }
 
     fn locate_proton(version: &str, common: &str) -> Result<String, &'static str> {
-        let dir = std::fs::read_dir(common).unwrap();
+        let dir: ReadDir;
+        match std::fs::read_dir(common) {
+            Ok(val) => dir = val,
+            Err(_) => return Err("error: cannot find common directory")
+        }
 
         for path in dir {
             let p = path.unwrap().path();
