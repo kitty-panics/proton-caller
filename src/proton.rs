@@ -1,11 +1,8 @@
-#![warn(clippy::all, clippy::pedantic)]
-
-use std::fs::ReadDir;
-
+use crate::config;
 pub(crate) struct Proton {
     proton: String,
     arguments: Vec<String>,
-    conf: Config,
+    conf: config::Config,
 }
 
 impl Proton {
@@ -21,12 +18,12 @@ impl Proton {
         if args_len < 2 {
             return Err("error: not enough arguments");
         }
-        let config: Config;
+        let config: config::Config;
         let version: String = args[1].to_string();
         let program: String;
         let path: String;
 
-        match Config::new() {
+        match config::Config::new() {
             Ok(val) => config = val,
             Err(e) => return Err(e),
         }
@@ -50,9 +47,9 @@ impl Proton {
         }
 
         let a: Vec<String> = Proton::arguments(start, args_len, &args, &program);
-
         println!("Proton:   {}", path.split('/').last().unwrap());
         println!("Program:  {}", program.split('/').last().unwrap());
+
         Ok(Proton {
             proton: format!("{}/proton", path),
             arguments: a,
@@ -81,10 +78,10 @@ impl Proton {
     }
 
     fn locate_proton(version: &str, common: &str) -> Result<String, &'static str> {
-        let dir: ReadDir;
+        let dir: std::fs::ReadDir;
         match std::fs::read_dir(common) {
             Ok(val) => dir = val,
-            Err(_) => return Err("error: cannot find common directory")
+            Err(_) => return Err("error: can not find common directory"),
         }
 
         for path in dir {
@@ -98,7 +95,7 @@ impl Proton {
     }
 
     fn init_custom(args: &[String]) -> Result<Proton, &'static str> {
-        let config: Config;
+        let config: config::Config;
         let args_len: usize = args.len();
         if args_len < 4 {
             return Err("error: not enough arguments");
@@ -112,7 +109,7 @@ impl Proton {
 
         let a: Vec<String> = Proton::arguments(4, args_len, &args, &args[3]);
 
-        match Config::new() {
+        match config::Config::new() {
             Ok(val) => config = val,
             Err(e) => return Err(e),
         }
@@ -160,41 +157,4 @@ fn if_arg(the_arg: &str) -> bool {
         return true;
     }
     false
-}
-
-#[derive(serde_derive::Deserialize)]
-pub(crate) struct Config {
-    data: String,
-    common: String,
-}
-
-impl Config {
-    pub fn new() -> Result<Config, &'static str> {
-        let config: Config;
-        let file: String;
-
-        if let Ok(val) = std::env::var("XDG_CONFIG_HOME") {
-            file = format!("{}/proton.conf", val);
-        } else {
-            file = format!("{}/.config/proton.conf", std::env::var("HOME").unwrap());
-        }
-
-        if !std::path::Path::new(&file).exists() {
-            return Err("error: proton.conf does not exist");
-        }
-
-        let conf: String;
-
-        match std::fs::read_to_string(file) {
-            Ok(s) => conf = s,
-            Err(_) => return Err("error: failed to read config"),
-        }
-
-        match toml::from_str(&conf) {
-            Ok(o) => config = o,
-            Err(_) => return Err("error: failed to read config"),
-        }
-
-        Ok(config)
-    }
 }
