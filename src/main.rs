@@ -1,6 +1,6 @@
 #![warn(clippy::all, clippy::pedantic)]
-mod proton;
 mod config;
+mod proton;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
