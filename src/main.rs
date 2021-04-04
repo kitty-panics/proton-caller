@@ -30,13 +30,13 @@ fn main() {
         _ => custom = false,
     }
 
-    match proton::Proton::init(&args, custom) {
-        Ok(s) => proton = s,
+    proton = match proton::Proton::init(&args, custom) {
+        Ok(s) => s,
         Err(e) => {
             eprintln!("proton-call: {}", e);
             return;
         }
-    }
+    };
 
     if let Err(e) = proton.execute() {
         eprintln!("proton-call: {}", e);
@@ -56,7 +56,7 @@ fn help() {
 }
 
 fn pc_version() {
-    println!("  proton-caller 2.2.3 Copyright (C) 2021  Avery Murray");
+    println!("  proton-caller 2.2.4 Copyright (C) 2021  Avery Murray");
     println!("This program comes with ABSOLUTELY NO WARRANTY.");
     println!("This is free software, and you are welcome to redistribute it");
     println!("under certain conditions.\n")

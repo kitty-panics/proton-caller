@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "proton-call"
-version = "2.2.3"
+version = "2.2.4"
 dependencies = [
  "serde",
  "serde_derive",

@@ -5,12 +5,22 @@ pub(crate) struct Proton {
     conf: config::Config,
 }
 
+const PROTON_LATEST: &str = "5.13";
+
 impl Proton {
+    /// Massive function to initiate the Proton struct.
+    ///
+    /// It starts to check if it is in custom mode, if it is, it returns just
+    /// what the `init_custom()` returns.
+    ///
+    /// It then loads the config into the struct
     pub fn init(args: &[String], custom: bool) -> Result<Proton, &'static str> {
-        let mut start: usize = 3;
+        // init custom mode instead.
         if custom {
             return Proton::init_custom(&args);
         }
+
+        // check if arguments are valid
         if if_arg(&args[1]) {
             return Err("error: invalid argument");
         }
@@ -18,35 +28,43 @@ impl Proton {
         if args_len < 2 {
             return Err("error: not enough arguments");
         }
-        let config: config::Config;
+
+        // create needed variables
+        let mut start: usize = 3;
         let version: String = args[1].to_string();
         let program: String;
-        let path: String;
 
-        match config::Config::new() {
-            Ok(val) => config = val,
+        // load in config
+        let config = match config::Config::new() {
+            Ok(val) => val,
             Err(e) => return Err(e),
-        }
+        };
 
-        if let Ok(val) = Proton::locate_proton(&version, &config.common) {
-            path = val;
-            program = args[2].to_string();
-        } else {
-            match Proton::locate_proton("5.13", &config.common) {
-                Ok(val) => {
-                    path = val;
-                }
-                Err(e) => return Err(e),
+        // load proton path
+        let path = match Proton::locate_proton(&version, &config.common) {
+            Ok(f) => {
+                program = args[2].to_string();
+                f
             }
-            program = args[1].to_string();
-            start = 2;
-        }
+            Err(_) => {
+                if let Ok(v) = Proton::locate_proton(PROTON_LATEST, &config.common) {
+                    program = args[1].to_string();
+                    start = 2;
+                    v
+                } else {
+                    return Err("error: cannot locate proton");
+                }
+            }
+        };
 
+        // check for proton and program executables
         if !Proton::check([&path, &program].to_vec()) {
             return Err("error: invalid Proton or executable");
         }
 
+        // create vector of arguments to pass to proton
         let a: Vec<String> = Proton::arguments(start, args_len, &args, &program);
+
         println!("Proton:   {}", path.split('/').last().unwrap());
         println!("Program:  {}", program.split('/').last().unwrap());
 
@@ -57,8 +75,11 @@ impl Proton {
         })
     }
 
+    /// might be a dumb way of creating arguements to pass into
+    /// `Command::new()`
     fn arguments(start: usize, end: usize, args: &[String], program: &str) -> Vec<String> {
         let mut vector: Vec<String> = vec![std::string::String::new(); end - (start - 2)];
+
         vector[0] = std::string::String::from("run");
         vector[1] = program.to_string();
 
@@ -68,6 +89,8 @@ impl Proton {
         vector
     }
 
+    /// check if all files in `file` vector exist,
+    /// if either don't return `false`
     fn check(file: Vec<&String>) -> bool {
         for i in file {
             if !std::path::Path::new(i).exists() {
@@ -77,11 +100,13 @@ impl Proton {
         true
     }
 
-    fn locate_proton(version: &str, common: &str) -> Result<String, &'static str> {
+    /// Searches `common` for any directory containing `version` and returns
+    /// `Ok(String)` with the path, or `Err(())` if none are found.
+    fn locate_proton(version: &str, common: &str) -> Result<String, ()> {
         let dir: std::fs::ReadDir;
         match std::fs::read_dir(common) {
             Ok(val) => dir = val,
-            Err(_) => return Err("error: can not find common directory"),
+            Err(_) => return Err(()),
         }
 
         for path in dir {
@@ -91,28 +116,32 @@ impl Proton {
                 return Ok(d.to_string());
             }
         }
-        Err("error: invalid Proton version")
+        Err(())
     }
 
+    /// Initiate custom mode, only called by `init()`
     fn init_custom(args: &[String]) -> Result<Proton, &'static str> {
-        let config: config::Config;
+        // check for valie arguments.
         let args_len: usize = args.len();
         if args_len < 4 {
             return Err("error: not enough arguments");
         }
 
+        // load path
         let path: String = args[2].to_string();
 
         if !Proton::check([&path, &args[3]].to_vec()) {
             return Err("error: invalid Proton or executable");
         }
 
+        // create arguements vector.
         let a: Vec<String> = Proton::arguments(4, args_len, &args, &args[3]);
 
-        match config::Config::new() {
-            Ok(val) => config = val,
+        // load in config
+        let config = match config::Config::new() {
+            Ok(val) => val,
             Err(e) => return Err(e),
-        }
+        };
 
         println!("Proton:   custom");
         println!("Program:  {}", args[3].split('/').last().unwrap());
@@ -124,19 +153,17 @@ impl Proton {
         })
     }
 
-    fn is_logging(&self) -> String {
-        match self.conf.log {
-            true => '1'.to_string(),
-            false => '0'.to_string(),
-        }
-    }
-
+    /// Executes proton,,, Finally.
     pub fn execute(self) -> Result<(), &'static str> {
         let ecode: std::process::ExitStatus;
         let mut child: std::process::Child;
         println!("\n________Proton________");
 
-        let log = self.is_logging();
+        let log = if self.conf.log {
+            '1'.to_string()
+        } else {
+            '0'.to_string()
+        };
 
         match std::process::Command::new(self.proton)
             .args(self.arguments)
@@ -161,6 +188,7 @@ impl Proton {
     }
 }
 
+/// check the args ig.
 fn if_arg(the_arg: &str) -> bool {
     let arg: Vec<char> = the_arg.chars().collect();
     if arg[0] == '-' {
