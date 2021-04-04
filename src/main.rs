@@ -4,8 +4,7 @@ mod proton;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let proton: proton::Proton;
-    let custom: bool;
+    let args_count: usize = args.len();
 
     if args.len() == 1 {
         println!("proton-call: missing arguments");
@@ -13,8 +12,7 @@ fn main() {
         return;
     }
 
-    match args[1].as_str() {
-        "--custom" | "-c" => custom = true,
+    let proton = match args[1].as_str() {
         "--help" | "-h" => {
             help();
             return;
@@ -27,15 +25,22 @@ fn main() {
             pc_version();
             return;
         }
-        _ => custom = false,
-    }
 
-    proton = match proton::Proton::init(&args, custom) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("proton-call: {}", e);
-            return;
-        }
+        "--custom" | "-c" => match proton::Proton::init_custom(&args, args_count) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("proton-call: {}", e);
+                return;
+            }
+        },
+
+        _ => match proton::Proton::init(&args, args_count) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("proton-call: {}", e);
+                return;
+            }
+        },
     };
 
     if let Err(e) = proton.execute() {

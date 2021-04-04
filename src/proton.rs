@@ -9,23 +9,12 @@ const PROTON_LATEST: &str = "5.13";
 
 impl Proton {
     /// Massive function to initiate the Proton struct.
-    ///
-    /// It starts to check if it is in custom mode, if it is, it returns just
-    /// what the `init_custom()` returns.
-    ///
-    /// It then loads the config into the struct
-    pub fn init(args: &[String], custom: bool) -> Result<Proton, &'static str> {
-        // init custom mode instead.
-        if custom {
-            return Proton::init_custom(&args);
-        }
-
+    pub fn init(args: &[String], args_count: usize) -> Result<Proton, &'static str> {
         // check if arguments are valid
         if if_arg(&args[1]) {
             return Err("error: invalid argument");
         }
-        let args_len: usize = args.len();
-        if args_len < 2 {
+        if args_count < 2 {
             return Err("error: not enough arguments");
         }
 
@@ -63,7 +52,7 @@ impl Proton {
         }
 
         // create vector of arguments to pass to proton
-        let a: Vec<String> = Proton::arguments(start, args_len, &args, &program);
+        let a: Vec<String> = Proton::arguments(start, args_count, &args, &program);
 
         println!("Proton:   {}", path.split('/').last().unwrap());
         println!("Program:  {}", program.split('/').last().unwrap());
@@ -120,10 +109,9 @@ impl Proton {
     }
 
     /// Initiate custom mode, only called by `init()`
-    fn init_custom(args: &[String]) -> Result<Proton, &'static str> {
+    pub fn init_custom(args: &[String], args_count: usize) -> Result<Proton, &'static str> {
         // check for valie arguments.
-        let args_len: usize = args.len();
-        if args_len < 4 {
+        if args_count < 4 {
             return Err("error: not enough arguments");
         }
 
@@ -135,7 +123,7 @@ impl Proton {
         }
 
         // create arguements vector.
-        let a: Vec<String> = Proton::arguments(4, args_len, &args, &args[3]);
+        let a: Vec<String> = Proton::arguments(4, args_count, &args, &args[3]);
 
         // load in config
         let config = match config::Config::new() {
