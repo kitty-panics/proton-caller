@@ -124,14 +124,24 @@ impl Proton {
         })
     }
 
+    fn is_logging(&self) -> String {
+        match self.conf.log {
+            true => '1'.to_string(),
+            false => '0'.to_string(),
+        }
+    }
+
     pub fn execute(self) -> Result<(), &'static str> {
         let ecode: std::process::ExitStatus;
         let mut child: std::process::Child;
         println!("\n________Proton________");
 
+        let log = self.is_logging();
+
         match std::process::Command::new(self.proton)
             .args(self.arguments)
             .env("STEAM_COMPAT_DATA_PATH", self.conf.data)
+            .env("PROTON_LOG", log)
             .spawn()
         {
             Ok(val) => child = val,

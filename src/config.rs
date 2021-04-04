@@ -1,7 +1,8 @@
 #[derive(serde_derive::Deserialize)]
-pub(crate) struct Config {
-    pub(crate) data: String,
-    pub(crate) common: String,
+pub struct Config {
+    pub data: String,
+    pub common: String,
+    pub log: bool,
 }
 
 impl Config {
