@@ -4,6 +4,7 @@ mod proton;
 
 use config::Config;
 use proton::Proton;
+
 use std::process::exit;
 
 fn main() {
