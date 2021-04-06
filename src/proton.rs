@@ -1,3 +1,5 @@
+use std::io::{Error, ErrorKind};
+
 use crate::config;
 pub(crate) struct Proton {
     proton: String,
@@ -9,13 +11,13 @@ const PROTON_LATEST: &str = "5.13";
 
 impl Proton {
     /// Massive function to initiate the Proton struct.
-    pub fn init(args: &[String], args_count: usize) -> Result<Proton, &'static str> {
+    pub fn init(args: &[String], args_count: usize) -> Result<Proton, std::io::Error> {
         // check if arguments are valid
         if if_arg(&args[1]) {
-            return Err("error: invalid argument");
+            return Err(Error::new(ErrorKind::Other, "error: invalid argument"));
         }
         if args_count < 2 {
-            return Err("error: not enough arguments");
+            return Err(Error::new(ErrorKind::Other, "error: not enough arguments"));
         }
 
         // create needed variables
@@ -24,10 +26,7 @@ impl Proton {
         let program: String;
 
         // load in config
-        let config = match config::Config::new() {
-            Ok(val) => val,
-            Err(e) => return Err(e),
-        };
+        let config = config::Config::new()?;
 
         // load proton path
         let path = match Proton::locate_proton(&version, &config.common) {
@@ -41,14 +40,14 @@ impl Proton {
                     start = 2;
                     v
                 } else {
-                    return Err("error: cannot locate proton");
+                    return Err(Error::new(ErrorKind::NotFound, "error: cannot locate proton"));
                 }
             }
         };
 
         // check for proton and program executables
         if !Proton::check([&path, &program].to_vec()) {
-            return Err("error: invalid Proton or executable");
+            return Err(Error::new(ErrorKind::NotFound, "error: invalid Proton or executable"));
         }
 
         // create vector of arguments to pass to proton
@@ -91,12 +90,8 @@ impl Proton {
 
     /// Searches `common` for any directory containing `version` and returns
     /// `Ok(String)` with the path, or `Err(())` if none are found.
-    fn locate_proton(version: &str, common: &str) -> Result<String, ()> {
-        let dir: std::fs::ReadDir;
-        match std::fs::read_dir(common) {
-            Ok(val) => dir = val,
-            Err(_) => return Err(()),
-        }
+    fn locate_proton(version: &str, common: &str) -> Result<String, std::io::Error> {
+        let dir: std::fs::ReadDir = std::fs::read_dir(common)?;
 
         for path in dir {
             let p = path.unwrap().path();
@@ -105,31 +100,29 @@ impl Proton {
                 return Ok(d.to_string());
             }
         }
-        Err(())
+
+        Err(Error::new(ErrorKind::NotFound, format!("error: Proton {} not found in {}", version, common)))
     }
 
     /// Initiate custom mode, only called by `init()`
-    pub fn init_custom(args: &[String], args_count: usize) -> Result<Proton, &'static str> {
+    pub fn init_custom(args: &[String], args_count: usize) -> Result<Proton, std::io::Error> {
         // check for valie arguments.
         if args_count < 4 {
-            return Err("error: not enough arguments");
+            return Err(Error::new(ErrorKind::Other, "error: not enough arguments"));
         }
 
         // load path
         let path: String = args[2].to_string();
 
         if !Proton::check([&path, &args[3]].to_vec()) {
-            return Err("error: invalid Proton or executable");
+            return Err(Error::new(ErrorKind::NotFound, "error: invalid Proton or executable"));
         }
 
         // create arguements vector.
         let a: Vec<String> = Proton::arguments(4, args_count, &args, &args[3]);
 
         // load in config
-        let config = match config::Config::new() {
-            Ok(val) => val,
-            Err(e) => return Err(e),
-        };
+        let config = config::Config::new()?;
 
         println!("Proton:   custom");
         println!("Program:  {}", args[3].split('/').last().unwrap());
@@ -142,9 +135,9 @@ impl Proton {
     }
 
     /// Executes proton,,, Finally.
-    pub fn execute(self) -> Result<(), &'static str> {
-        let ecode: std::process::ExitStatus;
-        let mut child: std::process::Child;
+    pub fn execute(self) -> Result<(), std::io::Error> {
+        // let ecode: std::process::ExitStatus;
+        // let mut child: std::process::Child;
         println!("\n________Proton________");
 
         let log = if self.conf.log {
@@ -153,23 +146,16 @@ impl Proton {
             '0'.to_string()
         };
 
-        match std::process::Command::new(self.proton)
+        let mut child = std::process::Command::new(self.proton)
             .args(self.arguments)
             .env("STEAM_COMPAT_DATA_PATH", self.conf.data)
             .env("PROTON_LOG", log)
-            .spawn()
-        {
-            Ok(val) => child = val,
-            Err(_) => return Err("error: failed to launch Proton"),
-        }
+            .spawn()?;
 
-        match child.wait() {
-            Ok(val) => ecode = val,
-            Err(_) => return Err("error: failed to wait for Proton"),
-        }
+        let ecode = child.wait()?;
 
         if !ecode.success() {
-            return Err("error: Proton exited with an error");
+            return Err(Error::new(ErrorKind::BrokenPipe, "error: Proton exited with an error"));
         }
         println!("______________________\n");
         Ok(())

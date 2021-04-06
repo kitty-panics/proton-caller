@@ -1,3 +1,5 @@
+use std::io::{Error, ErrorKind};
+
 #[derive(serde_derive::Deserialize)]
 pub struct Config {
     pub data: String,
@@ -6,10 +8,8 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new() -> Result<Config, &'static str> {
-        let config: Config;
-        let file: String;
-
+    pub fn new() -> Result<Config, std::io::Error> {
+    	let file;
         if let Ok(val) = std::env::var("XDG_CONFIG_HOME") {
             file = format!("{}/proton.conf", val);
         } else {
@@ -17,20 +17,11 @@ impl Config {
         }
 
         if !std::path::Path::new(&file).exists() {
-            return Err("error: proton.conf does not exist");
+            return Err(Error::new(ErrorKind::NotFound, "error: proton.conf does not exist"));
         }
 
-        let conf: String;
-
-        match std::fs::read_to_string(file) {
-            Ok(s) => conf = s,
-            Err(_) => return Err("error: failed to read config"),
-        }
-
-        match toml::from_str(&conf) {
-            Ok(o) => config = o,
-            Err(_) => return Err("error: failed to read config"),
-        }
+		let conf: String = std::fs::read_to_string(file)?;
+        let config = toml::from_str(&conf)?;
 
         Ok(config)
     }
