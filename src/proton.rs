@@ -83,7 +83,7 @@ impl Proton {
 	fn locate_proton(version: &str, common: &str, mut ret: usize) -> Result<(String, usize), Error> {
 		let dir: std::fs::ReadDir = std::fs::read_dir(&common)?;
 
-        if version.parse::<f32>().is_err() {
+        if version.parse::<f32>().is_err() && ret != 1 {
             ret = 1;
         }
 
@@ -95,6 +95,10 @@ impl Proton {
 				return Ok((format!("{}/proton", d), ret));
 			}
 		}
+
+        if ret == 1 {
+            return Err(Error::new(ErrorKind::NotFound, "Proton 5.13 not found"))
+        }
 
 		Self::locate_proton("5.13", common, ret)
 	}
