@@ -1,19 +1,29 @@
 use std::io::{Error, ErrorKind};
 
-use crate::config;
+use crate::config::Config;
 
 #[derive(Debug)]
 pub(crate) struct Proton {
     proton: String,
     arguments: Vec<String>,
-    conf: config::Config,
+    config: Config,
 }
 
-// const PROTON_LATEST: &str = "5.13";
+const PROTON_LATEST: &str = "5.13";
 
 impl Proton {
     /// Massive function to initiate the Proton struct.
-    pub fn init(args: &[String], args_count: usize) -> Result<Self, Error> {
+    pub fn new(
+        config: Config,
+        custom: bool,
+        args: &[String],
+        args_count: usize,
+    ) -> Result<Self, Error> {
+        // Run custom mode instead.
+        if custom {
+            return Self::init_custom(config, args, args_count);
+        }
+
         // check if arguments are valid
         if if_arg(&args[1]) {
             return Err(Error::new(ErrorKind::Other, "invalid argument"));
@@ -27,29 +37,34 @@ impl Proton {
         let version: String = args[1].to_string();
         let program: String;
 
-        // load in config
-        let config = config::Config::new()?;
-
         // load proton path
         let (path, def) = Self::locate_proton(&version, &config.common, 2)?;
         program = args[def].to_string();
         start += def;
-        drop(def);
 
         // check for proton and program executables
         if let (false, f) = Self::check([&path, &program].to_vec()) {
-            return Err(Error::new(ErrorKind::NotFound,  format!("'{}' does not exist", f)));
+            return Err(Error::new(
+                ErrorKind::NotFound,
+                format!("'{}' does not exist", f),
+            ));
         }
 
         // create vector of arguments to pass to proton
         let a: Vec<String> = Self::arguments(start, args_count, &args, &program);
 
-        println!("Program:  {}", program.split('/').last().unwrap());
+        println!(
+            "Program:  {}",
+            program.split('/').last().ok_or_else(|| Error::new(
+                ErrorKind::Other,
+                "failed to split program at proton.rs::init"
+            ))?
+        );
 
         Ok(Self {
             proton: path,
             arguments: a,
-            conf: config,
+            config,
         })
     }
 
@@ -80,31 +95,40 @@ impl Proton {
 
     /// Searches `common` for any directory containing `version` and returns
     /// `Ok(String)` with the path, or `Err(())` if none are found.
-	fn locate_proton(version: &str, common: &str, mut ret: usize) -> Result<(String, usize), Error> {
-		let dir: std::fs::ReadDir = std::fs::read_dir(&common)?;
+    fn locate_proton(
+        version: &str,
+        common: &str,
+        mut ret: usize,
+    ) -> Result<(String, usize), Error> {
+        let dir: std::fs::ReadDir = std::fs::read_dir(&common)?;
 
-        if version.parse::<f32>().is_err() && ret != 1 {
+        for path in dir {
+            let p = path?.path();
+            let d = p
+                .to_str()
+                .ok_or_else(|| Error::new(ErrorKind::Other, "failed to search common"))?;
+            if d.contains(version) {
+                println!(
+                    "Proton:   {}",
+                    d.split('/')
+                        .last()
+                        .ok_or_else(|| Error::new(ErrorKind::Other, "failed to split path"))?
+                );
+                return Ok((format!("{}/proton", d), ret));
+            }
+        }
+
+        if ret == 1 {
+            return Err(Error::new(ErrorKind::NotFound, "Proton 5.13 not found"));
+        } else if version.parse::<f32>().is_err() && ret != 1 {
             ret = 1;
         }
 
-		for path in dir {
-			let p = path.unwrap().path();
-			let d = p.to_str().unwrap();
-			if d.contains(version) {
-                println!("Proton:   {}", d.split('/').last().unwrap());
-				return Ok((format!("{}/proton", d), ret));
-			}
-		}
-
-        if ret == 1 {
-            return Err(Error::new(ErrorKind::NotFound, "Proton 5.13 not found"))
-        }
-
-		Self::locate_proton("5.13", common, ret)
-	}
+        Self::locate_proton(PROTON_LATEST, common, ret)
+    }
 
     /// Initiate custom mode, only called by `init()`
-    pub fn init_custom(args: &[String], args_count: usize) -> Result<Self, Error> {
+    pub fn init_custom(config: Config, args: &[String], args_count: usize) -> Result<Self, Error> {
         // check for valie arguments.
         if args_count < 4 {
             return Err(Error::new(ErrorKind::Other, "not enough arguments"));
@@ -114,22 +138,28 @@ impl Proton {
         let path: String = format!("{}/proton", args[2].to_string());
 
         if let (false, f) = Self::check([&path, &args[3]].to_vec()) {
-            return Err(Error::new(ErrorKind::NotFound,  format!("'{}' does not exist", f)));
+            return Err(Error::new(
+                ErrorKind::NotFound,
+                format!("'{}' does not exist", f),
+            ));
         }
 
         // create arguements vector.
         let a: Vec<String> = Self::arguments(4, args_count, &args, &args[3]);
 
-        // load in config
-        let config = config::Config::new()?;
-
         println!("Proton:   custom");
-        println!("Program:  {}", args[3].split('/').last().unwrap());
+        println!(
+            "Program:  {}",
+            args[3].split('/').last().ok_or_else(|| Error::new(
+                ErrorKind::Other,
+                "failed to split program at proton.rs::init_custom"
+            ))?
+        );
 
         Ok(Self {
             proton: path,
             arguments: a,
-            conf: config,
+            config,
         })
     }
 
@@ -137,7 +167,7 @@ impl Proton {
     pub fn execute(self) -> Result<(), Error> {
         println!("\n________Proton________");
 
-        let log = if self.conf.log {
+        let log = if self.config.log {
             '1'.to_string()
         } else {
             '0'.to_string()
@@ -145,13 +175,16 @@ impl Proton {
 
         let mut child = std::process::Command::new(self.proton)
             .args(self.arguments)
-            .env("STEAM_COMPAT_DATA_PATH", self.conf.data)
+            .env("STEAM_COMPAT_DATA_PATH", self.config.data)
             .env("PROTON_LOG", log)
             .spawn()?;
 
         let ecode = child.wait()?;
         if !ecode.success() {
-            return Err(Error::new(ErrorKind::BrokenPipe, "Proton exited with an error"));
+            return Err(Error::new(
+                ErrorKind::BrokenPipe,
+                "Proton exited with an error",
+            ));
         }
 
         println!("______________________\n");

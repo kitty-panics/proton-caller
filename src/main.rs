@@ -2,9 +2,14 @@
 mod config;
 mod proton;
 
+use config::Config;
+use proton::Proton;
+use std::process::exit;
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let args_count: usize = args.len();
+    let program: &str = args[0].split('/').last().unwrap_or(&args[0]);
 
     if args.len() == 1 {
         println!("proton-call: missing arguments");
@@ -12,7 +17,7 @@ fn main() {
         return;
     }
 
-    let proton = match args[1].as_str() {
+    let custom = match args[1].as_str() {
         "--help" | "-h" => {
             help();
             return;
@@ -26,21 +31,25 @@ fn main() {
             return;
         }
 
-        "--custom" | "-c" => match proton::Proton::init_custom(&args, args_count) {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("proton-call: error: {}", e);
-                return;
-            }
-        },
+        "--custom" | "-c" => true,
 
-        _ => match proton::Proton::init(&args, args_count) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("proton-call: error: {}", e);
-                return;
-            }
-        },
+        _ => false,
+    };
+
+    let config = match Config::new() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("proton-call: error: {}", e);
+            exit(78)
+        }
+    };
+
+    let proton = match Proton::new(config, custom, &args, args_count) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("{}: error: {}", program, e);
+            exit(70);
+        }
     };
 
     if let Err(e) = proton.execute() {

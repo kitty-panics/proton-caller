@@ -9,18 +9,25 @@ pub struct Config {
 
 impl Config {
     pub fn new() -> Result<Self, Error> {
-    	let file;
+        let file;
         if let Ok(val) = std::env::var("XDG_CONFIG_HOME") {
             file = format!("{}/proton.conf", val);
         } else {
-            file = format!("{}/.config/proton.conf", std::env::var("HOME").unwrap());
+            file = match std::env::var("HOME") {
+                Ok(h) => format!("{}/.config/proton.conf", h),
+                Err(e) => return Err(Error::new(ErrorKind::Other, format!("{}", e))),
+            };
         }
 
         if !std::path::Path::new(&file).exists() {
-            return Err(Error::new(ErrorKind::NotFound, "proton.conf does not exist"));
+            return Err(Error::new(
+                ErrorKind::NotFound,
+                "proton.conf does not exist",
+            ));
         }
 
-		let conf: String = std::fs::read_to_string(file)?;
+        let conf: String = std::fs::read_to_string(file)?;
+
         let config = toml::from_str(&conf)?;
 
         Ok(config)
