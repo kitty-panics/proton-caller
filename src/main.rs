@@ -29,7 +29,7 @@ fn main() {
         "--custom" | "-c" => match proton::Proton::init_custom(&args, args_count) {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("proton-call: {}", e);
+                eprintln!("proton-call: error: {}", e);
                 return;
             }
         },
@@ -37,14 +37,14 @@ fn main() {
         _ => match proton::Proton::init(&args, args_count) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("proton-call: {}", e);
+                eprintln!("proton-call: error: {}", e);
                 return;
             }
         },
     };
 
     if let Err(e) = proton.execute() {
-        eprintln!("proton-call: {}", e);
+        eprintln!("proton-call: error: {}", e);
     }
 }
 
