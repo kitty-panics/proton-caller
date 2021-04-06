@@ -34,6 +34,7 @@ impl Proton {
         let (path, def) = Self::locate_proton(&version, &config.common, 2)?;
         program = args[def].to_string();
         start += def;
+        drop(def);
 
         // check for proton and program executables
         if let (false, f) = Self::check([&path, &program].to_vec()) {
@@ -43,11 +44,10 @@ impl Proton {
         // create vector of arguments to pass to proton
         let a: Vec<String> = Self::arguments(start, args_count, &args, &program);
 
-        println!("Proton:   {}", path.split('/').last().unwrap());
         println!("Program:  {}", program.split('/').last().unwrap());
 
         Ok(Self {
-            proton: format!("{}/proton", path),
+            proton: path,
             arguments: a,
             conf: config,
         })
@@ -91,12 +91,12 @@ impl Proton {
 			let p = path.unwrap().path();
 			let d = p.to_str().unwrap();
 			if d.contains(version) {
-				return Ok((d.to_string(), ret));
+                println!("Proton:   {}", d.split('/').last().unwrap());
+				return Ok((format!("{}/proton", d), ret));
 			}
 		}
 
-        eprintln!("proton-call: warning: {} not found, defaulting to 5.13", version);
-		return Self::locate_proton("5.13", common, ret);
+		Self::locate_proton("5.13", common, ret)
 	}
 
     /// Initiate custom mode, only called by `init()`
@@ -107,7 +107,7 @@ impl Proton {
         }
 
         // load path
-        let path: String = args[2].to_string();
+        let path: String = format!("{}/proton", args[2].to_string());
 
         if let (false, f) = Self::check([&path, &args[3]].to_vec()) {
             return Err(Error::new(ErrorKind::NotFound,  format!("'{}' does not exist", f)));
@@ -123,7 +123,7 @@ impl Proton {
         println!("Program:  {}", args[3].split('/').last().unwrap());
 
         Ok(Self {
-            proton: format!("{}/proton", path),
+            proton: path,
             arguments: a,
             conf: config,
         })
