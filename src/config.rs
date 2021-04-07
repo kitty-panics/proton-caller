@@ -1,6 +1,6 @@
-use std::io::{Error, ErrorKind};
+use std::{env, fs, io::{Error, ErrorKind}, path::Path};
 
-#[derive(serde_derive::Deserialize, Debug)]
+#[derive(serde_derive::Deserialize)]
 pub struct Config {
     pub data: String,
     pub common: String,
@@ -10,25 +10,20 @@ pub struct Config {
 impl Config {
     pub fn new() -> Result<Self, Error> {
         let file;
-        if let Ok(val) = std::env::var("XDG_CONFIG_HOME") {
+
+        if let Ok(val) = env::var("XDG_CONFIG_HOME") {
             file = format!("{}/proton.conf", val);
+        } else if let Ok(val) = env::var("HOME") {
+            file = format!("{}/.config/proton.conf", val);
         } else {
-            file = match std::env::var("HOME") {
-                Ok(h) => format!("{}/.config/proton.conf", h),
-                Err(e) => return Err(Error::new(ErrorKind::Other, format!("{}", e))),
-            };
+            return Err(Error::new(ErrorKind::NotFound, "failed to find config directory (check environment)"));
         }
 
-        if !std::path::Path::new(&file).exists() {
-            return Err(Error::new(
-                ErrorKind::NotFound,
-                "proton.conf does not exist",
-            ));
+        if !Path::new(&file).exists() {
+            return Err(Error::new(ErrorKind::NotFound, format!("{} does not exist", file)));
         }
 
-        let conf: String = std::fs::read_to_string(file)?;
-
-        let config = toml::from_str(&conf)?;
+        let config: Self = toml::from_str(&fs::read_to_string(file)?)?;
 
         Ok(config)
     }

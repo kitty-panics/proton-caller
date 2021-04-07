@@ -7,15 +7,22 @@ use proton::Proton;
 
 use std::process::exit;
 
+#[macro_export]
+macro_rules! eprinter {
+    ($p:expr, $e:expr) => {
+        eprintln!("{}: error: {}", $p, $e);
+    };
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let args_count: usize = args.len();
-    let program: &str = args[0].split('/').last().unwrap_or(&args[0]);
+    let program: &str = args[0].split('/').last().get_or_insert(&args[0]);
 
-    if args.len() == 1 {
-        println!("proton-call: missing arguments");
-        println!("Try 'proton-call --help' for more information");
-        return;
+    if args_count == 1 {
+        eprintln!("proton-call: missing arguments");
+        eprintln!("Try 'proton-call --help' for more information");
+        exit(1);
     }
 
     let custom = match args[1].as_str() {
@@ -40,7 +47,7 @@ fn main() {
     let config = match Config::new() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("proton-call: error: {}", e);
+            eprinter!(program, e);
             exit(78)
         }
     };
@@ -48,13 +55,13 @@ fn main() {
     let proton = match Proton::new(config, custom, &args, args_count) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("{}: error: {}", program, e);
+            eprinter!(program, e);
             exit(70);
         }
     };
 
     if let Err(e) = proton.execute() {
-        eprintln!("proton-call: error: {}", e);
+        eprinter!(program, e);
     }
 }
 
