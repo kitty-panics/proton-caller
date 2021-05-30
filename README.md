@@ -75,7 +75,7 @@ sudo install -Dm 755 target/release/proton-call /usr/bin/proton-call
 Type=Application
 Name=Space Engine
 Comment=Space Engine
-Exec=proton-call 5.13 SpaceEngine.exe
+Exec=proton-call --run SpaceEngine.exe
 Path=/home/avery/Documents/games/SpaceEngine/system
 Terminal=false
 StartupNotify=false
