@@ -23,9 +23,9 @@ Uses custom version of Proton, give the past to directory, not the Proton execut
 
 use proton_call::{error, error_here, Proton, ProtonArgs, ProtonConfig, PROTON_LATEST};
 use std::ffi::OsString;
-use std::io::{ErrorKind, Error, Read, Result};
-use std::result::Result as DualRes;
 use std::fmt::Formatter;
+use std::io::{Error, ErrorKind, Read, Result};
+use std::result::Result as DualRes;
 
 struct Caller {
     data: String,
@@ -39,9 +39,9 @@ struct Caller {
 
 impl Caller {
     pub fn new() -> DualRes<Caller, ProtonCallerError> {
+        use pico_args::Arguments;
         use std::collections::HashMap;
         use std::process::exit;
-        use pico_args::Arguments;
 
         let mut parser: Arguments = Arguments::from_env();
 
@@ -111,7 +111,10 @@ impl ProtonArgs for Caller {
         if let Some(path) = &self.custom {
             format!("{}/proton", path)
         } else {
-            let proton: String = self.proton.clone().unwrap_or_else(|| PROTON_LATEST.to_string());
+            let proton: String = self
+                .proton
+                .clone()
+                .unwrap_or_else(|| PROTON_LATEST.to_string());
             format!("{}/Proton {}/proton", common, proton)
         }
     }
@@ -138,7 +141,7 @@ fn main() {
 
 fn proton_caller() -> Result<()> {
     let caller: Caller = Caller::new()?;
-    let proton: Proton =  Proton::new(&caller, &caller);
+    let proton: Proton = Proton::new(&caller, &caller);
     proton.check()?;
     proton.run()?;
     Ok(())
