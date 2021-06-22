@@ -24,8 +24,9 @@ Uses custom version of Proton, give the past to directory, not the Proton execut
 use proton_call::{error, error_here, Proton, ProtonArgs, ProtonConfig, PROTON_LATEST};
 use std::ffi::OsString;
 use std::fmt::Formatter;
-use std::io::{Error, ErrorKind, Read, Result};
-use std::result::Result as DualRes;
+use std::io::{Error, ErrorKind, Read};
+
+type Result<T> = std::result::Result<T, ProtonCallerError>;
 
 struct Caller {
     data: String,
@@ -38,7 +39,7 @@ struct Caller {
 }
 
 impl Caller {
-    pub fn new() -> DualRes<Caller, ProtonCallerError> {
+    pub fn new() -> Result<Caller> {
         use pico_args::Arguments;
         use std::collections::HashMap;
         use std::process::exit;
@@ -76,13 +77,23 @@ impl Caller {
         } else if let Ok(val) = var("HOME") {
             Ok(format!("{}/.config/proton.conf", val))
         } else {
-            error!(ErrorKind::Other, "Failed to read environment!")
+            Err(ProtonCallerError::new("Failed to read environment!"))
         }
     }
 
     fn read_config(path: String) -> Result<String> {
         use std::fs::File;
-        let mut file: File = File::open(path)?;
+
+        let mut file: File = match File::open(path) {
+            Ok(f) => f,
+            Err(e) => {
+                if e.kind() == ErrorKind::NotFound {
+                    return Err(ProtonCallerError::new("cannot open config file"));
+                } else {
+                    return Err(ProtonCallerError::new(e.to_string()));
+                }
+            }
+        };
 
         let mut buf: Vec<u8> = Vec::new();
         file.read_to_end(&mut buf)?;
@@ -192,6 +203,12 @@ macro_rules! vprintln {
 }
 
 struct ProtonCallerError(String);
+
+impl ProtonCallerError {
+    pub fn new<T: ToString>(s: T) -> Self {
+        Self(s.to_string())
+    }
+}
 
 impl From<pico_args::Error> for ProtonCallerError {
     fn from(e: pico_args::Error) -> Self {
