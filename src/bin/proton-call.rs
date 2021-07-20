@@ -30,7 +30,8 @@ type Result<T> = std::result::Result<T, ProtonCallerError>;
 
 struct Caller {
     data: String,
-    common: String,
+    steam: String,
+    common: Option<String>,
     proton: Option<String>,
     custom: Option<String>,
     program: String,
@@ -58,9 +59,16 @@ impl Caller {
         let config_dat: String = Caller::read_config(cfg_path)?;
         let config: HashMap<String, String> = toml::from_str(&config_dat)?;
 
+        let common: Option<String> = if config.contains_key("common") {
+            Some(config["steam"].clone())
+        } else {
+            None
+        };
+
         Ok(Caller {
             data: config["data"].clone(),
-            common: config["common"].clone(),
+            steam: config["steam"].clone(),
+            common,
             proton: parser.opt_value_from_str(["-p", "--proton"])?,
             custom: parser.opt_value_from_str(["-c", "--custom"])?,
             program: parser.value_from_str(["-r", "--run"])?,
@@ -108,8 +116,16 @@ impl Caller {
 }
 
 impl ProtonConfig for Caller {
+    fn get_steam(&self) -> String {
+        self.steam.clone()
+    }
+
     fn get_common(&self) -> String {
-        self.common.clone()
+        if self.common.is_none() {
+            format!("{}/steamapps/common/", self.steam.clone())
+        } else {
+            self.common.clone().unwrap()
+        }
     }
 
     fn get_data(&self) -> String {

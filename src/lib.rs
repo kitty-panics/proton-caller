@@ -18,6 +18,7 @@ pub static PROTON_LATEST: &str = "6.3";
 
 /// Main struct for PC, manages and contains all needed information to properly execute Proton.
 pub struct Proton {
+    steam: String,
     proton: String,
     executable: String,
     passed_args: Vec<OsString>,
@@ -30,6 +31,7 @@ impl Proton {
     pub fn new<T: ProtonConfig + ProtonArgs>(config: &T, args: &T) -> Proton {
         let common: String = config.get_common();
 
+        let steam: String = config.get_steam();
         let data: String = config.get_data();
         let proton: String = args.get_proton(&common);
         let executable: String = args.get_executable();
@@ -37,6 +39,7 @@ impl Proton {
         let log: bool = args.get_log();
 
         Proton {
+            steam,
             proton,
             executable,
             passed_args,
@@ -82,6 +85,7 @@ impl Proton {
             .arg(self.executable)
             .args(self.passed_args)
             .env("PROTON_LOG", log)
+            .env("STEAM_COMPAT_CLIENT_INSTALL_PATH", self.steam)
             .env("STEAM_COMPAT_DATA_PATH", self.data)
             .spawn()?;
 
@@ -98,6 +102,9 @@ impl Proton {
 
 /// Trait used in the Proton struct to get information from the Config.
 pub trait ProtonConfig {
+    /// Return `steam` directory where Steam is installed.
+    fn get_steam(&self) -> String;
+
     /// Return `common` directory where Proton versions are installed to.
     fn get_common(&self) -> String;
 
