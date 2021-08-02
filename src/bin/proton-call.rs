@@ -60,7 +60,7 @@ impl Caller {
         let config: HashMap<String, String> = toml::from_str(&config_dat)?;
 
         let common: Option<String> = if config.contains_key("common") {
-            Some(config["steam"].clone())
+            Some(config["common"].clone())
         } else {
             None
         };
