@@ -5,9 +5,7 @@ Run any Windows program through [Valve's Proton](https://github.com/ValveSoftwar
 
 Please create an issue if you want added features or have an issue.
 
-\> [FAQ](https://github.com/caverym/Proton-Caller/wiki/FAQ)
-
-https://aur.archlinux.org/packages/proton-caller/
+[FAQ](https://github.com/caverym/Proton-Caller/wiki/FAQ)
 
 ## Problem Reporting:
 Please create an issue on the [Github](https://github.com/caverym/Proton-Caller) page which lists: system, kernel version, game, shell, and if it is or isn't a Steam game – provide how you had installed it and where it is installed. Additionally provide screenshots of the shell. Try many methods to get it to work and describe what you did in your issue.
@@ -28,7 +26,7 @@ proton-call -r foo.exe --flags --for program
 
 Uses specified version of Proton, any extra arguments will be passed to the executable.
 ```
-proton-call -p 5.13 -r foor.exe
+proton-call -p 5.13 -r foo.exe
 ```
 
 Uses custom version of Proton, give the past to directory, not the Proton executable itself.
@@ -37,8 +35,8 @@ proton-call -c '/path/to/Proton version' -r foo.exe
 ```
 
 ## Config:
-Configuration files are extremely simple: `~/.config/proton.conf`
-   Set your own path to `data` (any empty directory) and `common` (steam's common dirrectory)
+Configuration files are extremely simple: `~/.config/proton.conf`  
+Set your own path to `data` (any empty directory), `steam`, (the directory steam is installed in), and optionally `common` (steam's common directory).
 ```
 data = "/home/avery/Documents/Proton/env/"
 common = "/home/avery/.steam/steam/steamapps/common/"
@@ -46,23 +44,19 @@ common = "/home/avery/.steam/steam/steamapps/common/"
 
 ## Install:
 
-To install `proton-call`
-```
-yay -S proton-caller
- ``` 
+#### Arch Linux:
+[Proton-caller](https://aur.archlinux.org/packages/proton-caller) is available as a [package in the AUR](https://aur.archlinux.org/packages/proton-caller).
 
-or: (with makepkg)
+#### Debian:
+A `.deb` file is available for download at the [releases](https://github.com/caverym/proton-caller/releases) page.
 
+#### Other Linux:
+An x86_64 Linux binary is available for download at the [releases](https://github.com/caverym/proton-caller/releases) page.
+
+#### Compile from source:
 ```
-git clone https://aur.archlinux.org/proton-caller.git
+git clone https://github.com/caverym/proton-caller.git
 cd proton-caller
-makepkg -si
-```
-
-or: (Requires Rust to build)
-```
-git clone https://github.com/caverym/Proton-Caller.git
-cd Proton-Caller
 cargo b --release --locked
 sudo install -Dm 755 target/release/proton-call /usr/bin/proton-call 
 ```
