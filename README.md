@@ -39,6 +39,9 @@ Configuration files are extremely simple: `~/.config/proton.conf`
 Set your own path to `data` (any empty directory), `steam`, (the directory steam is installed in), and optionally `common` (steam's common directory).
 ```
 data = "/home/avery/Documents/Proton/env/"
+steam = "/home/avery/.steam/steam/"
+
+# optional
 common = "/home/avery/.steam/steam/steamapps/common/"
 ```
 
