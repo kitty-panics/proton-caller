@@ -57,11 +57,11 @@ impl Proton {
         use std::path::Path;
 
         if !Path::new(&self.proton).exists() {
-            error!(ErrorKind::NotFound, "{} not found!", self.proton)?;
+            return Err(Error::new(ErrorKind::NotFound, format!("{} not found!", self.proton)));
         }
 
         if !Path::new(&self.executable).exists() {
-            error!(ErrorKind::NotFound, "{} not found!", self.executable)?;
+            return Err(Error::new(ErrorKind::NotFound, format!("{} not found!", self.executable)));
         }
 
         Ok(())
@@ -93,7 +93,7 @@ impl Proton {
         println!("______________________\n");
 
         if !exitcode.success() {
-            error!(ErrorKind::Other, "Proton exited with error")?;
+            return Err(Error::new(ErrorKind::Other, "Proton exited with error"));
         }
 
         Ok(())
@@ -125,22 +125,4 @@ pub trait ProtonArgs {
 
     /// Return value to use for the `PROTON_LOG` environment variable.
     fn get_log(&self) -> bool;
-}
-
-/// Macro to run the `error_here` function.
-#[macro_export]
-macro_rules! error {
-    ($ek:expr, $fmt:expr) => { crate::error_here($ek, $fmt) };
-    ($ek:expr, $fmt:literal, $($arg:expr),*) => { crate::error_here($ek, format!($fmt, $($arg),*)) }
-}
-
-/// Quick and dirt way to cause an error in a function.
-///
-/// # Errors
-///
-/// This function is mean to fail, mean to cause other functions to fail when needed.
-pub fn error_here<R, T: ToString>(kind: ErrorKind, info: T) -> Result<R> {
-    let error: String = info.to_string();
-    drop(info);
-    Err(Error::new(kind, error))
 }

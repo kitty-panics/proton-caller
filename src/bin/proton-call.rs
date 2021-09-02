@@ -21,7 +21,7 @@ Uses custom version of Proton, give the past to directory, not the Proton execut
 `proton-call -c '/path/to/Proton version' -r foo.exe`
 */
 
-use proton_call::{error, error_here, Proton, ProtonArgs, ProtonConfig, PROTON_LATEST};
+use proton_call::{Proton, ProtonArgs, ProtonConfig, PROTON_LATEST};
 use std::ffi::OsString;
 use std::fmt::Formatter;
 use std::io::{Error, ErrorKind, Read};
@@ -97,9 +97,8 @@ impl Caller {
             Err(e) => {
                 if e.kind() == ErrorKind::NotFound {
                     return Err(ProtonCallerError::new("cannot open config file"));
-                } else {
-                    return Err(ProtonCallerError::new(e.to_string()));
                 }
+                return Err(ProtonCallerError::new(e.to_string()));
             }
         };
 
@@ -108,7 +107,7 @@ impl Caller {
 
         let config_dat: String = match String::from_utf8(buf) {
             Ok(s) => s,
-            Err(e) => error!(ErrorKind::Other, "{}", e)?,
+            Err(e) => return Err(ProtonCallerError(e.to_string())),
         };
 
         Ok(config_dat)
@@ -221,8 +220,8 @@ macro_rules! vprintln {
 struct ProtonCallerError(String);
 
 impl ProtonCallerError {
-    pub fn new<T: ToString>(s: T) -> Self {
-        Self(s.to_string())
+    pub fn new<T: Into<String>>(s: T) -> Self {
+        Self(s.into())
     }
 }
 
