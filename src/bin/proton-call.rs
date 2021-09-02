@@ -21,7 +21,7 @@ Uses custom version of Proton, give the past to directory, not the Proton execut
 `proton-call -c '/path/to/Proton version' -r foo.exe`
 */
 
-use proton_call::{Proton, ProtonArgs, ProtonConfig, PROTON_LATEST};
+use proton_call::{Proton, ProtonArgs, ProtonConfig, PROTON_LATEST, ProtonPath};
 use std::ffi::OsString;
 use std::fmt::Formatter;
 use std::io::{Error, ErrorKind, Read};
@@ -133,15 +133,25 @@ impl ProtonConfig for Caller {
 }
 
 impl ProtonArgs for Caller {
-    fn get_proton(&self, common: &str) -> String {
+    fn get_proton(&self) -> ProtonPath {
         if let Some(path) = &self.custom {
-            format!("{}/proton", path)
+            ProtonPath::Custom {
+                path: path.to_string(),
+            }
         } else {
-            let proton: String = self
+            let version: String = self
                 .proton
                 .clone()
                 .unwrap_or_else(|| PROTON_LATEST.to_string());
-            format!("{}/Proton {}/proton", common, proton)
+
+            let name: String = format!("Proton {}", version);
+            let path: String = format!("{}/{}/proton", self.get_common(), name);
+
+            ProtonPath::Steam {
+                version,
+                name,
+                path
+            }
         }
     }
 

@@ -22,6 +22,7 @@ pub static PROTON_LATEST: &str = "6.3";
 pub struct Proton {
     steam: String,
     proton: ProtonPath,
+    common: String,
     executable: String,
     passed_args: Vec<OsString>,
     data: String,
@@ -32,10 +33,9 @@ impl Proton {
     /// Creates a new Proton structure, with a Config and Args struct.
     pub fn new<T: ProtonConfig + ProtonArgs>(config: &T, args: &T) -> Proton {
         let common: String = config.get_common();
-
         let steam: String = config.get_steam();
         let data: String = config.get_data();
-        let proton: ProtonPath = args.get_proton(&common);
+        let proton: ProtonPath = args.get_proton();
         let executable: String = args.get_executable();
         let passed_args: Vec<OsString> = args.get_extra_args();
         let log: bool = args.get_log();
@@ -43,6 +43,7 @@ impl Proton {
         Proton {
             steam,
             proton,
+            common,
             executable,
             passed_args,
             data,
@@ -57,6 +58,9 @@ impl Proton {
     /// Will fail if either requested Proton or executable don't exist.
     pub fn check(&self) -> Result<()> {
         use std::path::Path;
+
+        dbg!(&self);
+        dbg!(self.proton.name());
 
         if !Path::new(&self.proton.path()).exists() {
             return Err(Error::new(ErrorKind::NotFound, format!("{} not found!", self.proton)));
@@ -77,9 +81,6 @@ impl Proton {
     /// * Will fail if waiting for Proton child fails. Nothing can be done for this.
     pub fn run(self) -> Result<()> {
         use std::process::{Child, Command};
-
-        dbg!(&self);
-        dbg!(self.proton.name());
 
         let log = if self.log { "1" } else { "0" };
 
@@ -106,26 +107,36 @@ impl Proton {
 }
 
 #[derive(Debug, Clone)]
+/// `ProtonPath` Enum represents the Proton path and executable together.
 pub enum ProtonPath {
+    /// Custom just contains the path to the proton executable.
     Custom {
+        /// Contains full path to Proton's executable
         path: String,
     },
 
+    /// Steam struct, found from Common, contains the version number, name, and path to Proton.
     Steam {
+        /// Contains Proton's version number
         version: String,
+        /// Contains Proton's name (Proton 6.3)
         name: String,
+        /// Contains full path to Proton's executable
         path: String,
     }
 }
 
 impl ProtonPath {
+    #[must_use]
+    /// Returns the full path to the proton executable.
     pub fn path(&self) -> String {
         match self {
-            Self::Custom { path } => path.clone(),
-            Self::Steam { path, .. } => path.clone(),
+            Self::Custom { path } | Self::Steam { path, .. } => path.clone(),
         }
     }
 
+    #[must_use]
+    /// Returns the version number in Option<String>. None if custom.
     pub fn version(&self) -> Option<String> {
         match self {
             Self::Custom { .. } => None,
@@ -133,6 +144,9 @@ impl ProtonPath {
         }
     }
 
+    #[must_use]
+    /// returns the name (Proton 6.3) of the selected Proton version.
+    /// Tries to extract it from custom, but returns "custom" if it cannot.
     pub fn name(&self) -> String {
         match self {
             Self::Custom { path } => {
@@ -140,7 +154,9 @@ impl ProtonPath {
                 for s in ret {
                     if s == "proton" {
                         continue;
-                    } else if s.starts_with("Proton") {
+                    }
+
+                    if s.starts_with("Proton") {
                         return s.to_string()
                     }
                 }
@@ -174,7 +190,7 @@ pub trait ProtonConfig {
 /// Trait used in the Proton struct to get argument information from Command line.
 pub trait ProtonArgs {
     /// Return full path to the requested proton executable.
-    fn get_proton(&self, common: &str) -> ProtonPath;
+    fn get_proton(&self) -> ProtonPath;
 
     /// Return path to the Windows executable to run.
     fn get_executable(&self) -> String;
