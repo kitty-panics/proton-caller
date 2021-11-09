@@ -19,8 +19,193 @@ Uses specified version of Proton, any extra arguments will be passed to the exec
 
 Uses custom version of Proton, give the past to directory, not the Proton executable itself.
 `proton-call -c '/path/to/Proton version' -r foo.exe`
-*/
+ */
 
+#[macro_export]
+macro_rules! err {
+    ($($arg:tt)*) => { Err($crate::Error::new(format!($($arg)*))) }
+}
+
+use std::fmt::{Debug, Display, Formatter};
+use std::io::{ErrorKind, Read};
+use std::num::ParseIntError;
+use std::path::PathBuf;
+use std::str::FromStr;
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct Config {
+    data: PathBuf,
+    steam: PathBuf,
+    common: Option<PathBuf>,
+}
+
+impl Config {
+    /// Opens and returns the user's config
+    pub fn open() -> Result<Config, Error> {
+        use std::fs::File;
+        use std::io::{Read};
+
+        // Get default config location
+        let loc: PathBuf = Config::config_location()?;
+
+        // Open the config file
+        let mut file: File = match File::open(&loc) {
+            Ok(f) => f,
+            Err(e) => err!("'{}' when opening config", e)?,
+        };
+
+        // Read the config into memory
+        let mut buffer: Vec<u8> = Vec::new();
+
+        if let Err(e) = file.read_to_end(&mut buffer) {
+            err!("'{}' when reading config", e)?;
+        }
+
+        // Parse the config into the structure
+        let slice = buffer.as_slice();
+
+        let mut config: Config = match toml::from_slice(slice) {
+            Ok(c) => c,
+            Err(e) => err!("'{}' when parsing config", e)?,
+        };
+
+        config.default_common();
+
+        Ok(config)
+    }
+
+    /// Finds one of the two default config locations
+    pub fn config_location() -> Result<PathBuf, Error> {
+        use std::env::var;
+
+        if let Ok(val) = var("XDG_CONFIG_HOME") {
+            let path = format!("{}/proton.conf", val);
+            Ok(PathBuf::from(path))
+        } else if let Ok(val) = var("HOME") {
+            let path = format!("{}/.config/proton.conf", val);
+            Ok(PathBuf::from(path))
+        } else {
+            err!("cannot read required environment variables")
+        }
+    }
+
+    // Sets a default common if not given by user
+    fn default_common(&mut self) {
+        if self.common.is_none() {
+            let steam = self.steam.to_string_lossy().to_string();
+            let common_str = format!("{}/steamapps/common/", steam);
+            let common = PathBuf::from(common_str);
+            self.common = Some(common);
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Version {
+    major: u32,
+    minor: Option<u32>,
+    patch: Option<u32>,
+    extra: Option<String>,
+}
+
+impl Version {
+    pub fn new(major: u32, minor: Option<u32>, patch: Option<u32>, extra: Option<String>) -> Version {
+        Version {
+            major,
+            minor,
+            patch,
+            extra,
+        }
+    }
+}
+
+impl Display for Version {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut str: String = self.major.to_string();
+
+        if let Some(min) = &self.minor {
+            str = format!("{}.{}", str, min);
+            if let Some(patch) = &self.patch {
+                str = format!("{}.{}", str, patch);
+            }
+        }
+
+        if let Some(extra) = &self.extra {
+            str = format!("{}-{}", str, extra);
+        }
+
+        write!(f, "{}", str)
+    }
+}
+
+impl FromStr for Version {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.split('.').collect::<Vec<&str>>().as_slice() {
+            [maj] => Ok(Version::new(maj.parse()?, None, None, None)),
+            [maj, min] => Ok(Version::new(maj.parse()?, Some(min.parse()?), None, None)),
+            [maj, min, pat] => {
+                let patex: Vec<&str> = pat.split('-').collect();
+                let pat: Option<u32> = Some(patex[0].clone().parse()?);
+                let ex: Option<String> = if patex.len() >= 2 {
+                    Some(patex[1].to_string())
+                } else { None };
+
+                Ok(Version::new(maj.parse()?, Some(min.parse()?), pat, ex))
+            }
+            _ => err!("failed to parse '{}'", s)
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Args {
+    program: PathBuf,
+    version: Option<Version>,
+    custom: Option<PathBuf>,
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let program: String = args[0].split('/').last().unwrap_or(&args[0]).to_string();
+    if let Err(e) = proton_caller(args) {
+        eprintln!("{}: error: {}", program, e)
+    }
+}
+
+fn proton_caller(args: Vec<String>) -> Result<(), Error> {
+    use jargon_args::Jargon;
+
+    let mut parser = Jargon::from_vec(args);
+
+    let config = Config::open()?;
+
+    if parser.contains(["-h", "--help"]) {
+        todo!("help");
+    }else if parser.contains(["-v", "--version"]) {
+        todo!("version");
+    } else {
+        let args = Args {
+            program: parser.result_arg(["-r", "--run"])?,
+            version: parser.option_arg(["-p", "--proton"]),
+            custom: parser.option_arg(["-c", "--custom"]),
+        };
+
+        if args.custom.is_some() {
+            todo!("custom mode");
+        } else {
+            let config = Config::open()?;
+            todo!("normal mode");
+        }
+
+        println!("{:#?}\n{:#?}", config, args);
+    }
+
+    Ok(())
+}
+
+/*
 use proton_call::{Proton, ProtonArgs, ProtonConfig, PROTON_LATEST, ProtonPath};
 use std::ffi::OsString;
 use std::fmt::Formatter;
@@ -226,41 +411,34 @@ macro_rules! vprintln {
         if $v { println!($fmt) }
     }
 }
+*/
 
-struct ProtonCallerError(String);
+#[derive(Debug)]
+struct Error(String);
 
-impl ProtonCallerError {
-    pub fn new<T: Into<String>>(s: T) -> Self {
-        Self(s.into())
-    }
-}
-
-impl From<pico_args::Error> for ProtonCallerError {
-    fn from(e: pico_args::Error) -> Self {
-        ProtonCallerError(e.to_string())
-    }
-}
-
-impl From<ProtonCallerError> for Error {
-    fn from(e: ProtonCallerError) -> Self {
-        Error::new(ErrorKind::Other, e.to_string())
-    }
-}
-
-impl std::fmt::Display for ProtonCallerError {
+impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        Display::fmt(&self.0, f)
     }
 }
 
-impl From<Error> for ProtonCallerError {
-    fn from(e: Error) -> Self {
-        Self(e.to_string())
+impl Error {
+    pub fn new<T: ToString>(info: T) -> Error {
+        Error(info.to_string())
     }
 }
 
-impl From<toml::de::Error> for ProtonCallerError {
-    fn from(e: toml::de::Error) -> Self {
-        Self(e.to_string())
+impl From<ParseIntError> for Error {
+    fn from(pie: ParseIntError) -> Self {
+        Self(pie.to_string())
+    }
+}
+
+impl From<jargon_args::Error> for Error {
+    fn from(jae: jargon_args::Error) -> Self {
+        match jae {
+            jargon_args::Error::MissingArg(e) => Error::new(format!("missing argument: '{}'", e)),
+            jargon_args::Error::Other(e) => Error::new(format!("{}", e)),
+        }
     }
 }

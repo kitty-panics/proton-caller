@@ -1,6 +1,6 @@
 [package]
 name = "proton-call"
-version = "2.3.0"
+version = "3.0.0"
 license = "MIT"
 authors = ["Avery Murray <averylapine@gmail.com>"]
 description = "Run any Windows program through Valve's Proton"
@@ -15,8 +15,7 @@ lto = true
 codegen-units = 1
 
 [dependencies]
-toml = "0.5.8"
-serde = "1.0.126"
-serde_derive = "1.0.126"
-pico-args = "0.4.1"
-lliw = "0.1.2"
+toml = "0.5"
+jargon-args = "0.2.3"
+lliw = "*"
+serde = { version = "1", features = ["derive"] }
