@@ -3,16 +3,16 @@
 version = 3
 
 [[package]]
+name = "jargon-args"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f822f93441a0df2080a5ca60d861b4cf4ea53e65dccddbe04a70e6630f9e8341"
+
+[[package]]
 name = "lliw"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95a2fc354c42ab799761c289ec29b7c75d5b3c6dc670daa07f9ed8ac0b74440c"
-
-[[package]]
-name = "pico-args"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d7afeb98c5a10e0bffcc7fc16e105b04d06729fac5fd6384aebf7ff5cb5a67d"
 
 [[package]]
 name = "proc-macro2"
@@ -25,12 +25,11 @@ dependencies = [
 
 [[package]]
 name = "proton-call"
-version = "2.3.0"
+version = "3.0.0"
 dependencies = [
+ "jargon-args",
  "lliw",
- "pico-args",
  "serde",
- "serde_derive",
  "toml",
 ]
 
@@ -48,6 +47,9 @@ name = "serde"
 version = "1.0.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec7505abeacaec74ae4778d9d9328fe5a5d04253220a85c4ee022239fc996d03"
+dependencies = [
+ "serde_derive",
+]
 
 [[package]]
 name = "serde_derive"
