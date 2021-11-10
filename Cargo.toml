@@ -2,12 +2,12 @@
 name = "proton-call"
 version = "3.0.0"
 license = "MIT"
-authors = ["Avery Murray <averylapine@gmail.com>"]
+authors = ["Avery Murray <avery.murray@caverym.xyz>"]
 description = "Run any Windows program through Valve's Proton"
 repository = "https://github.com/caverym/proton-caller"
 readme = "README.md"
 keywords = ["wine", "valve", "steam", "proton"]
-edition = "2018"
+edition = "2021"
 
 [profile.release]
 opt-level = 'z'

@@ -191,9 +191,9 @@ fn proton_caller(args: Vec<String>) -> Result<(), Error> {
     let mut parser = Jargon::from_vec(args);
 
     if parser.contains(["-h", "--help"]) {
-        todo!("help");
+        help();
     } else if parser.contains(["-v", "--version"]) {
-        todo!("version");
+        version();
     } else if parser.contains(["-i", "--index"]) {
         let common_index = CommonIndex::new(&config.common())?;
         println!("{}", common_index);
@@ -448,4 +448,41 @@ impl From<jargon_args::Error> for Error {
             jargon_args::Error::Other(e) => Error::new(e),
         }
     }
+}
+
+static HELP: &str = "\
+Usage: proton-call [OPTIONS]... EXE [EXTRA]...
+
+Options:
+    -c, --custom [PATH]     Path to a directory containing Proton to use
+    -h, --help              View this help message
+    -i, --index             View an index of installed Proton versions
+    -l, --log               Pass PROTON_LOG variable to Proton
+    -p, --proton [VERSION]  Use Proton VERSION from `common`
+    -r, --run EXE           Run EXE in proton
+    -v, --verbose           Run in verbose mode
+    -V, --version           View version information
+
+Config:
+    The config file should be located at '$XDG_CONFIG_HOME/proton.conf' or '$HOME/.config/proton.conf'
+    The config requires two values.
+    Data: a location to any directory to contain Proton's runtime files.
+    Steam: the directory to where steam is installed (the one which contains the steamapps directory).
+    Common: the directory to where your proton versions are stored, usually Steam's steamapps/common directory.
+    Example:
+        data = \"/home/avery/Documents/Proton/env/\"
+        steam = \"/home/avery/.steam/steam/\"
+        common = \"/home/avery/.steam/steam/steamapps/common/\"
+";
+
+fn help() {
+    println!("{}", HELP);
+}
+
+fn version() {
+    println!(
+        "Proton Caller (proton-call) {} Copyright (C) 2021 {}",
+        env!("CARGO_PKG_VERSION"),
+        env!("CARGO_PKG_AUTHORS")
+    );
 }
