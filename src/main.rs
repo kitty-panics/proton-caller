@@ -26,12 +26,10 @@ macro_rules! err {
     ($($arg:tt)*) => { Err($crate::Error::new(format!($($arg)*))) }
 }
 
-use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display, Formatter};
-use std::io::{ErrorKind, Read};
 use std::num::ParseIntError;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::str::FromStr;
 
@@ -46,7 +44,7 @@ impl Config {
     /// Opens and returns the user's config
     pub fn open() -> Result<Config, Error> {
         use std::fs::File;
-        use std::io::{Read};
+        use std::io::Read;
 
         // Get default config location
         let loc: PathBuf = Config::config_location()?;
@@ -54,14 +52,14 @@ impl Config {
         // Open the config file
         let mut file: File = match File::open(&loc) {
             Ok(f) => f,
-            Err(e) => err!("'{}' when opening config", e)?,
+            Err(e) => return err!("'{}' when opening config", e),
         };
 
         // Read the config into memory
         let mut buffer: Vec<u8> = Vec::new();
 
         if let Err(e) = file.read_to_end(&mut buffer) {
-            err!("'{}' when reading config", e)?;
+            return err!("'{}' when reading config", e);
         }
 
         // Parse the config into the structure
@@ -69,7 +67,7 @@ impl Config {
 
         let mut config: Config = match toml::from_slice(slice) {
             Ok(c) => c,
-            Err(e) => err!("'{}' when parsing config", e)?,
+            Err(e) => return err!("'{}' when parsing config", e),
         };
 
         config.default_common();
@@ -123,22 +121,19 @@ struct ProtonVersion {
 
 impl Default for ProtonVersion {
     fn default() -> Self {
-        ProtonVersion {
-            major: 6,
-            minor: 3,
-        }
+        ProtonVersion { major: 6, minor: 3 }
     }
 }
 
 const EXPR_STR: &str = "Experimental";
-const EXPR_VER: ProtonVersion = ProtonVersion { major: u8::MAX, minor: u8::MAX };
+const EXPR_VER: ProtonVersion = ProtonVersion {
+    major: u8::MAX,
+    minor: u8::MAX,
+};
 
 impl ProtonVersion {
     pub fn new(major: u8, minor: u8) -> ProtonVersion {
-        ProtonVersion {
-            major,
-            minor,
-        }
+        ProtonVersion { major, minor }
     }
 }
 
@@ -152,14 +147,13 @@ impl FromStr for ProtonVersion {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-
         if s == EXPR_STR {
             return Ok(EXPR_VER);
         }
 
         match s.split('.').collect::<Vec<&str>>().as_slice() {
             [maj, min] => Ok(ProtonVersion::new(maj.parse()?, min.parse()?)),
-            _ => err!("failed to parse '{}'", s)
+            _ => err!("failed to parse '{}'", s),
         }
     }
 }
@@ -168,6 +162,7 @@ impl FromStr for ProtonVersion {
 struct Args {
     program: PathBuf,
     version: ProtonVersion,
+    log: bool,
     custom: Option<PathBuf>,
     args: Vec<String>,
 }
@@ -176,7 +171,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let program: String = args[0].split('/').last().unwrap_or(&args[0]).to_string();
     if let Err(e) = proton_caller(args) {
-        eprintln!("{}: error: {}", program, e)
+        eprintln!("{}: error: {}", program, e);
     }
 }
 
@@ -185,16 +180,15 @@ fn proton_caller(args: Vec<String>) -> Result<(), Error> {
 
     let mut parser = Jargon::from_vec(args);
 
-    let config = Config::open()?;
-
     if parser.contains(["-h", "--help"]) {
         todo!("help");
-    }else if parser.contains(["-v", "--version"]) {
+    } else if parser.contains(["-v", "--version"]) {
         todo!("version");
     } else {
         let args = Args {
             program: parser.result_arg(["-r", "--run"])?,
             version: parser.option_arg(["-p", "--proton"]).unwrap_or_default(),
+            log: parser.contains(["-l", "--log"]),
             custom: parser.option_arg(["-c", "--custom"]),
             args: parser.finish(),
         };
@@ -202,27 +196,36 @@ fn proton_caller(args: Vec<String>) -> Result<(), Error> {
         if args.custom.is_some() {
             todo!("custom mode");
         } else {
-            let config = Config::open()?;
-            let common_index = CommonIndex::new(&config.common())?;
-            let proton_path = match common_index.get(args.version) {
-                Some(pp) => pp,
-                None => err!("proton {} is not found", args.version)?,
-            };
-
-            let proton = Proton::new(
-                args.version,
-                proton_path,
-                args.program,
-                args.args,
-                config.data,
-                config.steam,
-            );
-
-            proton.run();
+            normal_mode(args)?;
         }
     }
 
     Ok(())
+}
+
+fn normal_mode(args: Args) -> Result<(), Error> {
+    let config = Config::open()?;
+    let common_index = CommonIndex::new(&config.common())?;
+    let proton_path = match common_index.get(args.version) {
+        Some(pp) => pp,
+        None => return err!("Proton {} is not found", args.version),
+    };
+
+    let proton = Proton::new(
+        args.version,
+        proton_path,
+        args.program,
+        args.args,
+        args.log,
+        config.data,
+        config.steam,
+    );
+
+    if proton.run()?.success() {
+        Ok(())
+    } else {
+        err!("Proton exited with an error")
+    }
 }
 
 #[derive(Debug)]
@@ -232,9 +235,9 @@ struct CommonIndex {
 }
 
 impl CommonIndex {
-    pub fn new(index: &PathBuf) -> Result<CommonIndex, Error> {
+    pub fn new(index: &Path) -> Result<CommonIndex, Error> {
         let mut idx = CommonIndex {
-            dir: index.clone(),
+            dir: index.to_path_buf(),
             map: BTreeMap::new(),
         };
         idx.index()?;
@@ -251,7 +254,7 @@ impl CommonIndex {
             for result_entry in rd {
                 let entry = match result_entry {
                     Ok(e) => e,
-                    Err(e) => err!("'{}' when reading common", e)?,
+                    Err(e) => return err!("'{}' when reading common", e),
                 };
 
                 let entry_path = entry.path();
@@ -268,7 +271,7 @@ impl CommonIndex {
                 }
             }
         } else {
-            err!("can not read common dir")?;
+            return err!("can not read common dir");
         }
 
         Ok(())
@@ -281,6 +284,7 @@ struct Proton {
     path: PathBuf,
     program: PathBuf,
     args: Vec<String>,
+    log: bool,
     compat: PathBuf,
     steam: PathBuf,
 }
@@ -291,6 +295,7 @@ impl Proton {
         path: PathBuf,
         program: PathBuf,
         args: Vec<String>,
+        log: bool,
         compat: PathBuf,
         steam: PathBuf,
     ) -> Proton {
@@ -299,9 +304,11 @@ impl Proton {
             path,
             program,
             args,
+            log,
             compat,
             steam,
-        }.update_path()
+        }
+        .update_path()
     }
 
     fn update_path(mut self) -> Proton {
@@ -314,20 +321,30 @@ impl Proton {
     fn run(self) -> Result<ExitStatus, Error> {
         use std::process::{Child, Command};
 
+        println!(
+            "Running Proton {} for {}",
+            self.version,
+            self.program.to_string_lossy()
+        );
+
+        let log: &str = if self.log { "1" } else { "0" };
+
         let mut child: Child = match Command::new(&self.path)
             .arg("run")
             .arg(&self.program)
             .args(&self.args)
+            .env("PROTON_LOG", log)
             .env("STEAM_COMPAT_DATA_PATH", &self.compat)
             .env("STEAM_COMPAT_CLIENT_INSTALL_PATH", &self.steam)
-            .spawn() {
+            .spawn()
+        {
             Ok(c) => c,
-            Err(e) => err!("failed spawning child:\n{:#?}", self)?,
+            Err(e) => return err!("failed spawning child: {}\n{:#?}", e, self),
         };
 
         let status = match child.wait() {
             Ok(e) => e,
-            Err(e) => err!("failed waiting for child '{}'", child.id())?,
+            Err(e) => return err!("failed waiting for child '{}': {}", child.id(), e),
         };
 
         Ok(status)
@@ -552,8 +569,8 @@ impl Display for Error {
 }
 
 impl Error {
-    pub fn new<T: ToString>(info: T) -> Error {
-        Error(info.to_string())
+    pub fn new(info: String) -> Error {
+        Error(info)
     }
 }
 
@@ -567,7 +584,7 @@ impl From<jargon_args::Error> for Error {
     fn from(jae: jargon_args::Error) -> Self {
         match jae {
             jargon_args::Error::MissingArg(e) => Error::new(format!("missing argument: '{}'", e)),
-            jargon_args::Error::Other(e) => Error::new(format!("{}", e)),
+            jargon_args::Error::Other(e) => Error::new(e),
         }
     }
 }
