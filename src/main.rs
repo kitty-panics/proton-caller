@@ -114,32 +114,41 @@ impl Config {
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
-struct ProtonVersion {
-    major: u8,
-    minor: u8,
+enum ProtonVersion {
+    Mainline(u8, u8),
+    Experimental,
+    Custom,
 }
 
 impl Default for ProtonVersion {
     fn default() -> Self {
-        ProtonVersion { major: 6, minor: 3 }
+        ProtonVersion::Mainline(6, 3)
     }
 }
 
-const EXPR_STR: &str = "Experimental";
-const EXPR_VER: ProtonVersion = ProtonVersion {
-    major: u8::MAX,
-    minor: u8::MAX,
-};
-
 impl ProtonVersion {
     pub fn new(major: u8, minor: u8) -> ProtonVersion {
-        ProtonVersion { major, minor }
+        ProtonVersion::Mainline(major, minor)
+    }
+
+    pub fn from_custom(name: &Path) -> ProtonVersion {
+        if let Some(n) = name.file_name() {
+            if let Ok(n) = n.to_string_lossy().to_string().parse() {
+                return n;
+            }
+        }
+
+        ProtonVersion::Custom
     }
 }
 
 impl Display for ProtonVersion {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}.{}", self.major, self.minor)
+        match self {
+            ProtonVersion::Mainline(mj, mn) => write!(f, "{}.{}", mj, mn),
+            ProtonVersion::Experimental => write!(f, "Experimental"),
+            ProtonVersion::Custom => write!(f, "Custom"),
+        }
     }
 }
 
@@ -147,8 +156,8 @@ impl FromStr for ProtonVersion {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s == EXPR_STR {
-            return Ok(EXPR_VER);
+        if s.to_ascii_lowercase() == "experimental" {
+            return Ok(ProtonVersion::Experimental);
         }
 
         match s.split('.').collect::<Vec<&str>>().as_slice() {
@@ -178,12 +187,16 @@ fn main() {
 fn proton_caller(args: Vec<String>) -> Result<(), Error> {
     use jargon_args::Jargon;
 
+    let config = Config::open()?;
     let mut parser = Jargon::from_vec(args);
 
     if parser.contains(["-h", "--help"]) {
         todo!("help");
     } else if parser.contains(["-v", "--version"]) {
         todo!("version");
+    } else if parser.contains(["-i", "--index"]) {
+        let common_index = CommonIndex::new(&config.common())?;
+        println!("{}", common_index);
     } else {
         let args = Args {
             program: parser.result_arg(["-r", "--run"])?,
@@ -194,17 +207,16 @@ fn proton_caller(args: Vec<String>) -> Result<(), Error> {
         };
 
         if args.custom.is_some() {
-            todo!("custom mode");
+            custom_mode(config, args)?;
         } else {
-            normal_mode(args)?;
+            normal_mode(config, args)?;
         }
     }
 
     Ok(())
 }
 
-fn normal_mode(args: Args) -> Result<(), Error> {
-    let config = Config::open()?;
+fn normal_mode(config: Config, args: Args) -> Result<(), Error> {
     let common_index = CommonIndex::new(&config.common())?;
     let proton_path = match common_index.get(args.version) {
         Some(pp) => pp,
@@ -228,10 +240,47 @@ fn normal_mode(args: Args) -> Result<(), Error> {
     }
 }
 
+fn custom_mode(config: Config, args: Args) -> Result<(), Error> {
+    if let Some(custom) = args.custom {
+        let proton = Proton::new(
+            ProtonVersion::from_custom(custom.as_path()),
+            custom,
+            args.program,
+            args.args,
+            args.log,
+            config.data,
+            config.steam,
+        );
+
+        if proton.run()?.success() {
+            Ok(())
+        } else {
+            err!("Proton exited with an error")
+        }
+    } else {
+        err!("failed to get custom path")
+    }
+}
+
 #[derive(Debug)]
 struct CommonIndex {
     dir: PathBuf,
     map: BTreeMap<ProtonVersion, PathBuf>,
+}
+
+impl Display for CommonIndex {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut str: String = format!(
+            "Indexed Directory: {}\n\nIndexed Proton Versions:\n",
+            self.dir.to_string_lossy()
+        );
+
+        for (version, path) in &self.map {
+            str = format!("{}\nProton {} `{}`", str, version, path.to_string_lossy());
+        }
+
+        write!(f, "{}", str)
+    }
 }
 
 impl CommonIndex {
@@ -350,214 +399,6 @@ impl Proton {
         Ok(status)
     }
 }
-
-/*
-use proton_call::{Proton, ProtonArgs, ProtonConfig, PROTON_LATEST, ProtonPath};
-use std::ffi::OsString;
-use std::fmt::Formatter;
-use std::io::{Error, ErrorKind, Read};
-
-type Result<T> = std::result::Result<T, ProtonCallerError>;
-
-struct Caller {
-    data: String,
-    steam: String,
-    common: Option<String>,
-    proton: Option<String>,
-    custom: Option<String>,
-    program: String,
-    log: bool,
-    extra: Vec<OsString>,
-}
-
-impl Caller {
-    pub fn new() -> Result<Caller> {
-        use pico_args::Arguments;
-        use std::collections::HashMap;
-        use std::process::exit;
-
-        let mut parser: Arguments = Arguments::from_env();
-
-        if parser.contains(["-h", "--help"]) {
-            println!("{}", HELP);
-            exit(0);
-        } else if parser.contains(["-V", "--version"]) {
-            version();
-            exit(0);
-        }
-
-        let cfg_path: String = Caller::locate_config()?;
-        let config_dat: String = Caller::read_config(cfg_path)?;
-        let config: HashMap<String, String> = toml::from_str(&config_dat)?;
-
-        let common: Option<String> = if config.contains_key("common") {
-            Some(config["common"].clone())
-        } else {
-            None
-        };
-
-        Ok(Caller {
-            data: config["data"].clone(),
-            steam: config["steam"].clone(),
-            common,
-            proton: parser.opt_value_from_str(["-p", "--proton"])?,
-            custom: parser.opt_value_from_str(["-c", "--custom"])?,
-            program: parser.value_from_str(["-r", "--run"])?,
-            log: parser.contains(["-l", "--log"]),
-            extra: parser.finish(),
-        })
-    }
-
-    fn locate_config() -> Result<String> {
-        use std::env::var;
-
-        if let Ok(val) = var("XDG_CONFIG_HOME") {
-            Ok(format!("{}/proton.conf", val))
-        } else if let Ok(val) = var("HOME") {
-            Ok(format!("{}/.config/proton.conf", val))
-        } else {
-            Err(ProtonCallerError::new("Failed to read environment!"))
-        }
-    }
-
-    fn read_config(path: String) -> Result<String> {
-        use std::fs::File;
-
-        let mut file: File = match File::open(path) {
-            Ok(f) => f,
-            Err(e) => {
-                if e.kind() == ErrorKind::NotFound {
-                    return Err(ProtonCallerError::new("cannot open config file"));
-                }
-                return Err(ProtonCallerError::new(e.to_string()));
-            }
-        };
-
-        let mut buf: Vec<u8> = Vec::new();
-        file.read_to_end(&mut buf)?;
-
-        let config_dat: String = match String::from_utf8(buf) {
-            Ok(s) => s,
-            Err(e) => return Err(ProtonCallerError(e.to_string())),
-        };
-
-        Ok(config_dat)
-    }
-}
-
-impl ProtonConfig for Caller {
-    fn get_steam(&self) -> String {
-        self.steam.clone()
-    }
-
-    fn get_common(&self) -> String {
-        if self.common.is_none() {
-            format!("{}/steamapps/common/", self.steam.clone())
-        } else {
-            self.common.clone().unwrap()
-        }
-    }
-
-    fn get_data(&self) -> String {
-        self.data.clone()
-    }
-}
-
-impl ProtonArgs for Caller {
-    fn get_proton(&self) -> ProtonPath {
-        if let Some(path) = &self.custom {
-            ProtonPath::Custom {
-                path: path.to_string(),
-            }
-        } else {
-            let version: String = self
-                .proton
-                .clone()
-                .unwrap_or_else(|| PROTON_LATEST.to_string());
-
-            let name: String = format!("Proton {}", version);
-            let path: String = format!("{}/{}/proton", self.get_common(), name);
-
-            ProtonPath::Steam {
-                version,
-                name,
-                path
-            }
-        }
-    }
-
-    fn get_executable(&self) -> String {
-        self.program.clone()
-    }
-
-    fn get_extra_args(&self) -> Vec<OsString> {
-        self.extra.clone()
-    }
-
-    fn get_log(&self) -> bool {
-        self.log
-    }
-}
-
-fn main() {
-    if let Err(e) = proton_caller() {
-        eprintln!("{}error:{} {}", lliw::Fg::LightRed, lliw::Fg::Reset, e);
-        std::process::exit(1);
-    }
-}
-
-fn proton_caller() -> Result<()> {
-    let caller: Caller = Caller::new()?;
-    let proton: Proton = Proton::new(&caller, &caller);
-    proton.check()?;
-    proton.run()?;
-    Ok(())
-}
-
-fn version() {
-    println!(
-        "Proton Caller (proton-call) {} Copyright (C) 2021 {}",
-        env!("CARGO_PKG_VERSION"),
-        env!("CARGO_PKG_AUTHORS")
-    );
-}
-
-static HELP: &str = "\
-Usage: proton-call [OPTIONS]... EXE [EXTRA]...
-
-Options:
-    -c, --custom [PATH]     Path to a directory containing Proton to use
-    -h, --help              View this help message
-    -l, --log               Pass PROTON_LOG variable to Proton
-    -p, --proton [VERSION]  Use Proton VERSION from `common`
-    -r, --run EXE           Run EXE in proton
-    -v, --verbose           Run in verbose mode
-    -V, --version           View version information
-
-Config:
-    The config file should be located at '$XDG_CONFIG_HOME/proton.conf' or '$HOME/.config/proton.conf'
-
-    The config requires two values.
-    Data: a location to any directory to contain Proton's runtime files.
-    Common: the directory where your proton versions are stored, usually Steams' common directory.
-
-    Example:
-        data = \"/home/avery/Documents/Proton/env/\"
-        common = \"/home/avery/.steam/steam/steamapps/common/\"
-";
-
-/// Verbose println macro, checks `$v` to be true, if is, prints the text.
-#[macro_export]
-macro_rules! vprintln {
-    ($v:expr, $fmt:literal, $($arg:expr),*) => {
-        if $v { println!($fmt, $($arg),*) }
-    };
-
-    ($v:expr, $fmt:literal) => {
-        if $v { println!($fmt) }
-    }
-}
-*/
 
 #[derive(Debug)]
 struct Error(String);
