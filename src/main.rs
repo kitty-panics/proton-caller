@@ -114,39 +114,40 @@ impl Config {
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
-struct ProtonVersion {
-    major: u8,
-    minor: u8,
+enum ProtonVersion {
+    Mainline(u8, u8),
+    Experimental,
+    Custom,
 }
 
 impl Default for ProtonVersion {
     fn default() -> Self {
-        ProtonVersion { major: 6, minor: 3 }
+        ProtonVersion::Mainline(6, 3)
     }
 }
 
-const EXPR_STR: &str = "Experimental";
-const EXPR_VER: ProtonVersion = ProtonVersion {
-    major: u8::MAX,
-    minor: u8::MAX,
-};
-
 impl ProtonVersion {
     pub fn new(major: u8, minor: u8) -> ProtonVersion {
-        ProtonVersion { major, minor }
+        ProtonVersion::Mainline(major, minor)
     }
 
-    fn is_experimental(&self) -> bool {
-        *self == EXPR_VER
+    pub fn from_custom(name: &Path) -> ProtonVersion {
+        if let Some(n) = name.file_name() {
+            if let Ok(n) = n.to_string_lossy().to_string().parse() {
+                return n;
+            }
+        }
+
+        ProtonVersion::Custom
     }
 }
 
 impl Display for ProtonVersion {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if self.is_experimental() {
-            write!(f, "Experimental")
-        } else {
-            write!(f, "{}.{}", self.major, self.minor)
+        match self {
+            ProtonVersion::Mainline(mj, mn) => write!(f, "{}.{}", mj, mn),
+            ProtonVersion::Experimental => write!(f, "Experimental"),
+            ProtonVersion::Custom => write!(f, "Custom"),
         }
     }
 }
@@ -155,8 +156,8 @@ impl FromStr for ProtonVersion {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.to_ascii_lowercase() == EXPR_STR.to_ascii_lowercase() {
-            return Ok(EXPR_VER);
+        if s.to_ascii_lowercase() == "experimental" {
+            return Ok(ProtonVersion::Experimental);
         }
 
         match s.split('.').collect::<Vec<&str>>().as_slice() {
@@ -206,7 +207,7 @@ fn proton_caller(args: Vec<String>) -> Result<(), Error> {
         };
 
         if args.custom.is_some() {
-            todo!("custom mode");
+            custom_mode(config, args)?;
         } else {
             normal_mode(config, args)?;
         }
@@ -240,7 +241,25 @@ fn normal_mode(config: Config, args: Args) -> Result<(), Error> {
 }
 
 fn custom_mode(config: Config, args: Args) -> Result<(), Error> {
-    todo!();
+    if let Some(custom) = args.custom {
+        let proton = Proton::new(
+            ProtonVersion::from_custom(custom.as_path()),
+            custom,
+            args.program,
+            args.args,
+            args.log,
+            config.data,
+            config.steam,
+        );
+
+        if proton.run()?.success() {
+            Ok(())
+        } else {
+            err!("Proton exited with an error")
+        }
+    } else {
+        err!("failed to get custom path")
+    }
 }
 
 #[derive(Debug)]
@@ -251,8 +270,10 @@ struct CommonIndex {
 
 impl Display for CommonIndex {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut str: String = format!("Indexed Directory: {}\n\nIndexed Proton Versions:\n",
-                                      self.dir.to_string_lossy());
+        let mut str: String = format!(
+            "Indexed Directory: {}\n\nIndexed Proton Versions:\n",
+            self.dir.to_string_lossy()
+        );
 
         for (version, path) in &self.map {
             str = format!("{}\nProton {} `{}`", str, version, path.to_string_lossy());
