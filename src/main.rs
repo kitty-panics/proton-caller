@@ -26,10 +26,13 @@ macro_rules! err {
     ($($arg:tt)*) => { Err($crate::Error::new(format!($($arg)*))) }
 }
 
+use std::collections::btree_map::Entry;
+use std::collections::BTreeMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::io::{ErrorKind, Read};
 use std::num::ParseIntError;
 use std::path::PathBuf;
+use std::process::ExitStatus;
 use std::str::FromStr;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -92,68 +95,70 @@ impl Config {
     // Sets a default common if not given by user
     fn default_common(&mut self) {
         if self.common.is_none() {
-            let steam = self.steam.to_string_lossy().to_string();
-            let common_str = format!("{}/steamapps/common/", steam);
-            let common = PathBuf::from(common_str);
+            let common = self._default_common();
             self.common = Some(common);
         }
     }
+
+    fn _default_common(&self) -> PathBuf {
+        let steam = self.steam.to_string_lossy().to_string();
+        let common_str = format!("{}/steamapps/common/", steam);
+        PathBuf::from(common_str)
+    }
+
+    pub fn common(&self) -> PathBuf {
+        if let Some(common) = &self.common {
+            common.clone()
+        } else {
+            self._default_common()
+        }
+    }
 }
 
-#[derive(Debug)]
-struct Version {
-    major: u32,
-    minor: Option<u32>,
-    patch: Option<u32>,
-    extra: Option<String>,
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+struct ProtonVersion {
+    major: u8,
+    minor: u8,
 }
 
-impl Version {
-    pub fn new(major: u32, minor: Option<u32>, patch: Option<u32>, extra: Option<String>) -> Version {
-        Version {
+impl Default for ProtonVersion {
+    fn default() -> Self {
+        ProtonVersion {
+            major: 6,
+            minor: 3,
+        }
+    }
+}
+
+const EXPR_STR: &str = "Experimental";
+const EXPR_VER: ProtonVersion = ProtonVersion { major: u8::MAX, minor: u8::MAX };
+
+impl ProtonVersion {
+    pub fn new(major: u8, minor: u8) -> ProtonVersion {
+        ProtonVersion {
             major,
             minor,
-            patch,
-            extra,
         }
     }
 }
 
-impl Display for Version {
+impl Display for ProtonVersion {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut str: String = self.major.to_string();
-
-        if let Some(min) = &self.minor {
-            str = format!("{}.{}", str, min);
-            if let Some(patch) = &self.patch {
-                str = format!("{}.{}", str, patch);
-            }
-        }
-
-        if let Some(extra) = &self.extra {
-            str = format!("{}-{}", str, extra);
-        }
-
-        write!(f, "{}", str)
+        write!(f, "{}.{}", self.major, self.minor)
     }
 }
 
-impl FromStr for Version {
+impl FromStr for ProtonVersion {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.split('.').collect::<Vec<&str>>().as_slice() {
-            [maj] => Ok(Version::new(maj.parse()?, None, None, None)),
-            [maj, min] => Ok(Version::new(maj.parse()?, Some(min.parse()?), None, None)),
-            [maj, min, pat] => {
-                let patex: Vec<&str> = pat.split('-').collect();
-                let pat: Option<u32> = Some(patex[0].clone().parse()?);
-                let ex: Option<String> = if patex.len() >= 2 {
-                    Some(patex[1].to_string())
-                } else { None };
 
-                Ok(Version::new(maj.parse()?, Some(min.parse()?), pat, ex))
-            }
+        if s == EXPR_STR {
+            return Ok(EXPR_VER);
+        }
+
+        match s.split('.').collect::<Vec<&str>>().as_slice() {
+            [maj, min] => Ok(ProtonVersion::new(maj.parse()?, min.parse()?)),
             _ => err!("failed to parse '{}'", s)
         }
     }
@@ -162,8 +167,9 @@ impl FromStr for Version {
 #[derive(Debug)]
 struct Args {
     program: PathBuf,
-    version: Option<Version>,
+    version: ProtonVersion,
     custom: Option<PathBuf>,
+    args: Vec<String>,
 }
 
 fn main() {
@@ -188,21 +194,144 @@ fn proton_caller(args: Vec<String>) -> Result<(), Error> {
     } else {
         let args = Args {
             program: parser.result_arg(["-r", "--run"])?,
-            version: parser.option_arg(["-p", "--proton"]),
+            version: parser.option_arg(["-p", "--proton"]).unwrap_or_default(),
             custom: parser.option_arg(["-c", "--custom"]),
+            args: parser.finish(),
         };
 
         if args.custom.is_some() {
             todo!("custom mode");
         } else {
             let config = Config::open()?;
-            todo!("normal mode");
-        }
+            let common_index = CommonIndex::new(&config.common())?;
+            let proton_path = match common_index.get(args.version) {
+                Some(pp) => pp,
+                None => err!("proton {} is not found", args.version)?,
+            };
 
-        println!("{:#?}\n{:#?}", config, args);
+            let proton = Proton::new(
+                args.version,
+                proton_path,
+                args.program,
+                args.args,
+                config.data,
+                config.steam,
+            );
+
+            proton.run();
+        }
     }
 
     Ok(())
+}
+
+#[derive(Debug)]
+struct CommonIndex {
+    dir: PathBuf,
+    map: BTreeMap<ProtonVersion, PathBuf>,
+}
+
+impl CommonIndex {
+    pub fn new(index: &PathBuf) -> Result<CommonIndex, Error> {
+        let mut idx = CommonIndex {
+            dir: index.clone(),
+            map: BTreeMap::new(),
+        };
+        idx.index()?;
+        Ok(idx)
+    }
+
+    pub fn get(&self, version: ProtonVersion) -> Option<PathBuf> {
+        let path = self.map.get(&version)?;
+        Some(path.clone())
+    }
+
+    fn index(&mut self) -> Result<(), Error> {
+        if let Ok(rd) = self.dir.read_dir() {
+            for result_entry in rd {
+                let entry = match result_entry {
+                    Ok(e) => e,
+                    Err(e) => err!("'{}' when reading common", e)?,
+                };
+
+                let entry_path = entry.path();
+
+                if entry_path.is_dir() {
+                    let name = entry.file_name();
+                    let name = name.to_string_lossy().to_string();
+                    if name.starts_with("Proton ") {
+                        if let Some(version_str) = name.split(' ').last() {
+                            let version = version_str.parse()?;
+                            self.map.insert(version, entry_path);
+                        }
+                    }
+                }
+            }
+        } else {
+            err!("can not read common dir")?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct Proton {
+    version: ProtonVersion,
+    path: PathBuf,
+    program: PathBuf,
+    args: Vec<String>,
+    compat: PathBuf,
+    steam: PathBuf,
+}
+
+impl Proton {
+    pub fn new(
+        version: ProtonVersion,
+        path: PathBuf,
+        program: PathBuf,
+        args: Vec<String>,
+        compat: PathBuf,
+        steam: PathBuf,
+    ) -> Proton {
+        Proton {
+            version,
+            path,
+            program,
+            args,
+            compat,
+            steam,
+        }.update_path()
+    }
+
+    fn update_path(mut self) -> Proton {
+        let mut str = self.path.to_string_lossy().to_string();
+        str = format!("{}/proton", str);
+        self.path = PathBuf::from(str);
+        self
+    }
+
+    fn run(self) -> Result<ExitStatus, Error> {
+        use std::process::{Child, Command};
+
+        let mut child: Child = match Command::new(&self.path)
+            .arg("run")
+            .arg(&self.program)
+            .args(&self.args)
+            .env("STEAM_COMPAT_DATA_PATH", &self.compat)
+            .env("STEAM_COMPAT_CLIENT_INSTALL_PATH", &self.steam)
+            .spawn() {
+            Ok(c) => c,
+            Err(e) => err!("failed spawning child:\n{:#?}", self)?,
+        };
+
+        let status = match child.wait() {
+            Ok(e) => e,
+            Err(e) => err!("failed waiting for child '{}'", child.id())?,
+        };
+
+        Ok(status)
+    }
 }
 
 /*
