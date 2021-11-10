@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![forbid(missing_docs)]
 #![warn(clippy::all, clippy::pedantic)]
 
 /*!
@@ -9,18 +10,29 @@ Run any Windows program through [Valve's Proton](https://github.com/ValveSoftwar
 ## Usage:
 
 Defaults to the latest version of Proton.
-`proton-call -r foo.exe`
+```
+proton-call -r foo.exe
+```
 
-Defaults to the latest version of Proton, all extra arguments passed to the executable.
-`proton-call -r foo.exe --flags --for program`
+Defaults to the latest verison of Proton, all extra arguments passed to the executable.
+```
+proton-call -r foo.exe --goes --to program
+```
+
+`--goes --to program` are passed to the proton / the program
 
 Uses specified version of Proton, any extra arguments will be passed to the executable.
-`proton-call -p 5.13 -r foo.exe`
+```
+proton-call -p 5.13 -r foo.exe
+```
 
 Uses custom version of Proton, give the past to directory, not the Proton executable itself.
-`proton-call -c '/path/to/Proton version' -r foo.exe`
+```
+proton-call -c '/path/to/Proton version' -r foo.exe
+```
  */
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! err {
     ($($arg:tt)*) => { Err($crate::Error::new(format!($($arg)*))) }
@@ -33,7 +45,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 use std::str::FromStr;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+/// Config type for parsing config files
+#[derive(Debug, serde::Deserialize)]
 struct Config {
     data: PathBuf,
     steam: PathBuf,
@@ -62,7 +75,7 @@ impl Config {
             return err!("'{}' when reading config", e);
         }
 
-        // Parse the config into the structure
+        // Parse the config into `Config`
         let slice = buffer.as_slice();
 
         let mut config: Config = match toml::from_slice(slice) {
@@ -90,7 +103,7 @@ impl Config {
         }
     }
 
-    // Sets a default common if not given by user
+    /// Sets a default common if not given by user
     fn default_common(&mut self) {
         if self.common.is_none() {
             let common = self._default_common();
@@ -98,12 +111,14 @@ impl Config {
         }
     }
 
+    /// Generates a default common directory
     fn _default_common(&self) -> PathBuf {
         let steam = self.steam.to_string_lossy().to_string();
         let common_str = format!("{}/steamapps/common/", steam);
         PathBuf::from(common_str)
     }
 
+    /// Returns the in use common directory
     pub fn common(&self) -> PathBuf {
         if let Some(common) = &self.common {
             common.clone()
@@ -113,69 +128,77 @@ impl Config {
     }
 }
 
+/// Version type to handle Proton Versions
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
-enum ProtonVersion {
+enum Version {
+    /// Two number version
     Mainline(u8, u8),
+    /// Experimental version
     Experimental,
+    /// Custom version (will be replaced by Mainline if possible)
     Custom,
 }
 
-impl Default for ProtonVersion {
+impl Default for Version {
     fn default() -> Self {
-        ProtonVersion::Mainline(6, 3)
+        Version::Mainline(6, 3)
     }
 }
 
-impl ProtonVersion {
-    pub fn new(major: u8, minor: u8) -> ProtonVersion {
-        ProtonVersion::Mainline(major, minor)
+impl Version {
+    /// Creates a new `Version::Mainline` instance
+    pub fn new(major: u8, minor: u8) -> Version {
+        Version::Mainline(major, minor)
     }
 
-    pub fn from_custom(name: &Path) -> ProtonVersion {
+    /// Tries parsing custom Proton path into `Version::Mainline`
+    pub fn from_custom(name: &Path) -> Version {
         if let Some(n) = name.file_name() {
             if let Ok(n) = n.to_string_lossy().to_string().parse() {
                 return n;
             }
         }
 
-        ProtonVersion::Custom
+        Version::Custom
     }
 }
 
-impl Display for ProtonVersion {
+impl Display for Version {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ProtonVersion::Mainline(mj, mn) => write!(f, "{}.{}", mj, mn),
-            ProtonVersion::Experimental => write!(f, "Experimental"),
-            ProtonVersion::Custom => write!(f, "Custom"),
+            Version::Mainline(mj, mn) => write!(f, "{}.{}", mj, mn),
+            Version::Experimental => write!(f, "Experimental"),
+            Version::Custom => write!(f, "Custom"),
         }
     }
 }
 
-impl FromStr for ProtonVersion {
+impl FromStr for Version {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.to_ascii_lowercase() == "experimental" {
-            return Ok(ProtonVersion::Experimental);
+            return Ok(Version::Experimental);
         }
 
         match s.split('.').collect::<Vec<&str>>().as_slice() {
-            [maj, min] => Ok(ProtonVersion::new(maj.parse()?, min.parse()?)),
+            [maj, min] => Ok(Version::new(maj.parse()?, min.parse()?)),
             _ => err!("failed to parse '{}'", s),
         }
     }
 }
 
+/// Type to handle and parse command line arguments with `Jargon`
 #[derive(Debug)]
 struct Args {
     program: PathBuf,
-    version: ProtonVersion,
+    version: Version,
     log: bool,
     custom: Option<PathBuf>,
     args: Vec<String>,
 }
 
+/// Main function which purely handles errors
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let program: String = args[0].split('/').last().unwrap_or(&args[0]).to_string();
@@ -184,6 +207,7 @@ fn main() {
     }
 }
 
+/// Effective main function which parses arguments
 fn proton_caller(args: Vec<String>) -> Result<(), Error> {
     use jargon_args::Jargon;
 
@@ -195,7 +219,7 @@ fn proton_caller(args: Vec<String>) -> Result<(), Error> {
     } else if parser.contains(["-v", "--version"]) {
         version();
     } else if parser.contains(["-i", "--index"]) {
-        let common_index = CommonIndex::new(&config.common())?;
+        let common_index = Index::new(&config.common())?;
         println!("{}", common_index);
     } else {
         let args = Args {
@@ -216,8 +240,9 @@ fn proton_caller(args: Vec<String>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Runs caller in normal mode, running indexed Proton versions
 fn normal_mode(config: Config, args: Args) -> Result<(), Error> {
-    let common_index = CommonIndex::new(&config.common())?;
+    let common_index = Index::new(&config.common())?;
     let proton_path = match common_index.get(args.version) {
         Some(pp) => pp,
         None => return err!("Proton {} is not found", args.version),
@@ -240,10 +265,11 @@ fn normal_mode(config: Config, args: Args) -> Result<(), Error> {
     }
 }
 
+/// Runs caller in custom mode, using a custom Proton path
 fn custom_mode(config: Config, args: Args) -> Result<(), Error> {
     if let Some(custom) = args.custom {
         let proton = Proton::new(
-            ProtonVersion::from_custom(custom.as_path()),
+            Version::from_custom(custom.as_path()),
             custom,
             args.program,
             args.args,
@@ -262,13 +288,14 @@ fn custom_mode(config: Config, args: Args) -> Result<(), Error> {
     }
 }
 
+/// Index type to Index Proton versions in common
 #[derive(Debug)]
-struct CommonIndex {
+struct Index {
     dir: PathBuf,
-    map: BTreeMap<ProtonVersion, PathBuf>,
+    map: BTreeMap<Version, PathBuf>,
 }
 
-impl Display for CommonIndex {
+impl Display for Index {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut str: String = format!(
             "Indexed Directory: {}\n\nIndexed Proton Versions:\n",
@@ -283,9 +310,10 @@ impl Display for CommonIndex {
     }
 }
 
-impl CommonIndex {
-    pub fn new(index: &Path) -> Result<CommonIndex, Error> {
-        let mut idx = CommonIndex {
+impl Index {
+    /// Creates an index of Proton versions in given path
+    pub fn new(index: &Path) -> Result<Index, Error> {
+        let mut idx = Index {
             dir: index.to_path_buf(),
             map: BTreeMap::new(),
         };
@@ -293,11 +321,13 @@ impl CommonIndex {
         Ok(idx)
     }
 
-    pub fn get(&self, version: ProtonVersion) -> Option<PathBuf> {
+    /// Retrieves the path of the requested Proton version
+    pub fn get(&self, version: Version) -> Option<PathBuf> {
         let path = self.map.get(&version)?;
         Some(path.clone())
     }
 
+    /// Indexes Proton versions
     fn index(&mut self) -> Result<(), Error> {
         if let Ok(rd) = self.dir.read_dir() {
             for result_entry in rd {
@@ -327,9 +357,10 @@ impl CommonIndex {
     }
 }
 
+/// Type to handle executing Proton
 #[derive(Debug)]
 struct Proton {
-    version: ProtonVersion,
+    version: Version,
     path: PathBuf,
     program: PathBuf,
     args: Vec<String>,
@@ -339,8 +370,9 @@ struct Proton {
 }
 
 impl Proton {
+    /// Creates a new instance of `Proton`
     pub fn new(
-        version: ProtonVersion,
+        version: Version,
         path: PathBuf,
         program: PathBuf,
         args: Vec<String>,
@@ -360,6 +392,7 @@ impl Proton {
         .update_path()
     }
 
+    /// Appends the executable to the path
     fn update_path(mut self) -> Proton {
         let mut str = self.path.to_string_lossy().to_string();
         str = format!("{}/proton", str);
@@ -367,6 +400,7 @@ impl Proton {
         self
     }
 
+    /// Changes `compat` path to the version of Proton in use, creates the directory if doesn't already exist
     pub fn run(mut self) -> Result<ExitStatus, Error> {
         use std::io::ErrorKind;
 
@@ -387,6 +421,7 @@ impl Proton {
         self.execute()
     }
 
+    /// Executes Proton
     fn execute(self) -> Result<ExitStatus, Error> {
         use std::process::{Child, Command};
 
@@ -420,6 +455,7 @@ impl Proton {
     }
 }
 
+/// Error type which just contains a `String`
 #[derive(Debug)]
 struct Error(String);
 
@@ -430,6 +466,7 @@ impl Display for Error {
 }
 
 impl Error {
+    /// Creates a new instance of Error
     pub fn new(info: String) -> Error {
         Error(info)
     }
@@ -450,6 +487,7 @@ impl From<jargon_args::Error> for Error {
     }
 }
 
+#[doc(hidden)]
 static HELP: &str = "\
 Usage: proton-call [OPTIONS]... EXE [EXTRA]...
 
@@ -475,10 +513,12 @@ Config:
         common = \"/home/avery/.steam/steam/steamapps/common/\"
 ";
 
+#[doc(hidden)]
 fn help() {
     println!("{}", HELP);
 }
 
+#[doc(hidden)]
 fn version() {
     println!(
         "Proton Caller (proton-call) {} Copyright (C) 2021 {}",
