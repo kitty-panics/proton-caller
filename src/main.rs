@@ -135,11 +135,19 @@ impl ProtonVersion {
     pub fn new(major: u8, minor: u8) -> ProtonVersion {
         ProtonVersion { major, minor }
     }
+
+    fn is_experimental(&self) -> bool {
+        *self == EXPR_VER
+    }
 }
 
 impl Display for ProtonVersion {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}.{}", self.major, self.minor)
+        if self.is_experimental() {
+            write!(f, "Experimental")
+        } else {
+            write!(f, "{}.{}", self.major, self.minor)
+        }
     }
 }
 
@@ -147,7 +155,7 @@ impl FromStr for ProtonVersion {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s == EXPR_STR {
+        if s.to_ascii_lowercase() == EXPR_STR.to_ascii_lowercase() {
             return Ok(EXPR_VER);
         }
 
@@ -178,12 +186,16 @@ fn main() {
 fn proton_caller(args: Vec<String>) -> Result<(), Error> {
     use jargon_args::Jargon;
 
+    let config = Config::open()?;
     let mut parser = Jargon::from_vec(args);
 
     if parser.contains(["-h", "--help"]) {
         todo!("help");
     } else if parser.contains(["-v", "--version"]) {
         todo!("version");
+    } else if parser.contains(["-i", "--index"]) {
+        let common_index = CommonIndex::new(&config.common())?;
+        println!("{}", common_index);
     } else {
         let args = Args {
             program: parser.result_arg(["-r", "--run"])?,
@@ -196,15 +208,14 @@ fn proton_caller(args: Vec<String>) -> Result<(), Error> {
         if args.custom.is_some() {
             todo!("custom mode");
         } else {
-            normal_mode(args)?;
+            normal_mode(config, args)?;
         }
     }
 
     Ok(())
 }
 
-fn normal_mode(args: Args) -> Result<(), Error> {
-    let config = Config::open()?;
+fn normal_mode(config: Config, args: Args) -> Result<(), Error> {
     let common_index = CommonIndex::new(&config.common())?;
     let proton_path = match common_index.get(args.version) {
         Some(pp) => pp,
@@ -228,10 +239,27 @@ fn normal_mode(args: Args) -> Result<(), Error> {
     }
 }
 
+fn custom_mode(config: Config, args: Args) -> Result<(), Error> {
+    todo!();
+}
+
 #[derive(Debug)]
 struct CommonIndex {
     dir: PathBuf,
     map: BTreeMap<ProtonVersion, PathBuf>,
+}
+
+impl Display for CommonIndex {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut str: String = format!("Indexed Directory: {}\n\nIndexed Proton Versions:\n",
+                                      self.dir.to_string_lossy());
+
+        for (version, path) in &self.map {
+            str = format!("{}\nProton {} `{}`", str, version, path.to_string_lossy());
+        }
+
+        write!(f, "{}", str)
+    }
 }
 
 impl CommonIndex {
