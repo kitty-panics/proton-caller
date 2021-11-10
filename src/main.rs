@@ -367,7 +367,27 @@ impl Proton {
         self
     }
 
-    fn run(self) -> Result<ExitStatus, Error> {
+    pub fn run(mut self) -> Result<ExitStatus, Error> {
+        use std::io::ErrorKind;
+
+        let name = self.compat.to_string_lossy().to_string();
+        let newdir = format!("{}/Proton {}", name, self.version);
+
+        match std::fs::create_dir(&newdir) {
+            Ok(_) => self.compat = PathBuf::from(newdir),
+            Err(e) => {
+                if e.kind() == ErrorKind::AlreadyExists {
+                    self.compat = PathBuf::from(newdir);
+                } else {
+                    return err!("failed creating new directory: {}", e);
+                }
+            }
+        }
+
+        self.execute()
+    }
+
+    fn execute(self) -> Result<ExitStatus, Error> {
         use std::process::{Child, Command};
 
         println!(
