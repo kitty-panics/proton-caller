@@ -1,0 +1,128 @@
+use crate::{err, Error};
+use std::fmt::{Display, Formatter};
+use std::path::PathBuf;
+
+/// Config type for parsing config files
+#[derive(Debug, serde::Deserialize)]
+pub struct Config {
+    data: PathBuf,
+    steam: PathBuf,
+    common: Option<PathBuf>,
+}
+
+impl Config {
+    /// Opens and returns the user's config
+    ///
+    /// # Errors
+    ///
+    /// This function will fail if...
+    /// * Can not read `XDG_CONFIG_HOME` or `HOME` from the environment
+    /// * Can not open config file
+    /// * Can not parse config into `Config`
+    pub fn open() -> Result<Config, Error> {
+        use std::fs::File;
+        use std::io::Read;
+
+        // Get default config location
+        let loc: PathBuf = Config::config_location()?;
+
+        // Open the config file
+        let mut file: File = match File::open(&loc) {
+            Ok(f) => f,
+            Err(e) => return err!("'{}' when opening config", e),
+        };
+
+        // Read the config into memory
+        let mut buffer: Vec<u8> = Vec::new();
+
+        if let Err(e) = file.read_to_end(&mut buffer) {
+            return err!("'{}' when reading config", e);
+        }
+
+        // Parse the config into `Config`
+        let slice = buffer.as_slice();
+
+        let mut config: Config = match toml::from_slice(slice) {
+            Ok(c) => c,
+            Err(e) => return err!("'{}' when parsing config", e),
+        };
+
+        config.default_common();
+
+        Ok(config)
+    }
+
+    /// Finds one of the two default config locations
+    ///
+    /// # Errors
+    ///
+    /// Will only fail if `XDG_CONFIG_HOME` and `HOME` do not exist in environment
+    pub fn config_location() -> Result<PathBuf, Error> {
+        use std::env::var;
+
+        if let Ok(val) = var("XDG_CONFIG_HOME") {
+            let path = format!("{}/proton.conf", val);
+            Ok(PathBuf::from(path))
+        } else if let Ok(val) = var("HOME") {
+            let path = format!("{}/.config/proton.conf", val);
+            Ok(PathBuf::from(path))
+        } else {
+            err!("cannot read required environment variables")
+        }
+    }
+
+    /// Sets a default common if not given by user
+    fn default_common(&mut self) {
+        if self.common.is_none() {
+            let common = self._default_common();
+            self.common = Some(common);
+        }
+    }
+
+    #[must_use]
+    /// Generates a default common directory
+    fn _default_common(&self) -> PathBuf {
+        eprintln!("warning: using default common");
+        let steam = self.steam.to_string_lossy();
+        let common_str = format!("{}/steamapps/common/", steam);
+        PathBuf::from(common_str)
+    }
+
+    #[must_use]
+    /// Returns the in use common directory
+    pub fn common(&self) -> PathBuf {
+        if let Some(common) = &self.common {
+            common.clone()
+        } else {
+            self._default_common()
+        }
+    }
+
+    #[must_use]
+    /// Returns the in use steam directory
+    pub fn steam(&self) -> PathBuf {
+        self.steam.clone()
+    }
+
+    #[must_use]
+    /// Returns the in use compat data directory
+    pub fn data(&self) -> PathBuf {
+        self.data.clone()
+    }
+}
+
+impl Display for Config {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let data = self.data.to_string_lossy();
+        let steam = self.steam.to_string_lossy();
+
+        let common = if let Some(common) = &self.common {
+            common.to_string_lossy().to_string()
+        } else {
+            let pb = self._default_common();
+            pb.to_string_lossy().to_string()
+        };
+
+        write!(f, "steam: {}\ndata: {}\ncommon: {}", steam, data, common)
+    }
+}
