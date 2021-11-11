@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 #![forbid(missing_docs)]
+#![forbid(unstable_features)]
+#![forbid(missing_fragment_specifier)]
 #![warn(clippy::all, clippy::pedantic)]
 
 /*!
@@ -13,6 +15,7 @@ mod error;
 mod index;
 mod version;
 
+use std::borrow::Cow;
 pub use config::Config;
 pub use error::Error;
 pub use index::Index;
@@ -65,8 +68,8 @@ impl Proton {
 
     /// Appends the executable to the path
     fn update_path(mut self) -> Proton {
-        let str = self.path.to_string_lossy();
-        let str = format!("{}/proton", str);
+        let str: Cow<str> = self.path.to_string_lossy();
+        let str: String = format!("{}/proton", str);
         self.path = PathBuf::from(str);
         self
     }
@@ -81,8 +84,8 @@ impl Proton {
     pub fn run(mut self) -> Result<ExitStatus, Error> {
         use std::io::ErrorKind;
 
-        let name = self.compat.to_string_lossy();
-        let newdir = format!("{}/Proton {}", name, self.version);
+        let name: Cow<str> = self.compat.to_string_lossy();
+        let newdir: String = format!("{}/Proton {}", name, self.version);
 
         match std::fs::create_dir(&newdir) {
             Ok(_) => self.compat = PathBuf::from(newdir),
@@ -123,7 +126,7 @@ impl Proton {
             Err(e) => return err!("failed spawning child: {}\n{:#?}", e, self),
         };
 
-        let status = match child.wait() {
+        let status: ExitStatus = match child.wait() {
             Ok(e) => e,
             Err(e) => return err!("failed waiting for child '{}': {}", child.id(), e),
         };

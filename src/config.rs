@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use crate::{err, Error};
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
@@ -40,7 +41,7 @@ impl Config {
         }
 
         // Parse the config into `Config`
-        let slice = buffer.as_slice();
+        let slice: &[u8] = buffer.as_slice();
 
         let mut config: Config = match toml::from_slice(slice) {
             Ok(c) => c,
@@ -74,7 +75,7 @@ impl Config {
     /// Sets a default common if not given by user
     fn default_common(&mut self) {
         if self.common.is_none() {
-            let common = self._default_common();
+            let common: PathBuf = self._default_common();
             self.common = Some(common);
         }
     }
@@ -83,8 +84,8 @@ impl Config {
     /// Generates a default common directory
     fn _default_common(&self) -> PathBuf {
         eprintln!("warning: using default common");
-        let steam = self.steam.to_string_lossy();
-        let common_str = format!("{}/steamapps/common/", steam);
+        let steam: Cow<str> = self.steam.to_string_lossy();
+        let common_str: String = format!("{}/steamapps/common/", steam);
         PathBuf::from(common_str)
     }
 
@@ -113,13 +114,13 @@ impl Config {
 
 impl Display for Config {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let data = self.data.to_string_lossy();
-        let steam = self.steam.to_string_lossy();
+        let data: Cow<str> = self.data.to_string_lossy();
+        let steam: Cow<str> = self.steam.to_string_lossy();
 
-        let common = if let Some(common) = &self.common {
+        let common: String = if let Some(common) = &self.common {
             common.to_string_lossy().to_string()
         } else {
-            let pb = self._default_common();
+            let pb: PathBuf = self._default_common();
             pb.to_string_lossy().to_string()
         };
 

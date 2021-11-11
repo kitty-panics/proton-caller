@@ -1,6 +1,8 @@
 use crate::{err, Error, Version};
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::fmt::{Display, Formatter};
+use std::fs::DirEntry;
 use std::path::{Path, PathBuf};
 
 /// Index type to Index Proton versions in common
@@ -66,16 +68,16 @@ impl Index {
     fn index(&mut self) -> Result<(), Error> {
         if let Ok(rd) = self.dir.read_dir() {
             for result_entry in rd {
-                let entry = match result_entry {
+                let entry: DirEntry = match result_entry {
                     Ok(e) => e,
                     Err(e) => return err!("'{}' when reading common", e),
                 };
 
-                let entry_path = entry.path();
+                let entry_path: PathBuf = entry.path();
 
                 if entry_path.is_dir() {
-                    let name = entry.file_name();
-                    let name = name.to_string_lossy().to_string();
+                    let name: OsString = entry.file_name();
+                    let name: String = name.to_string_lossy().to_string();
                     if let Some(version_str) = name.split(' ').last() {
                         if let Ok(version) = version_str.parse() {
                             self.map.insert(version, entry_path);

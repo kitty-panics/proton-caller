@@ -58,19 +58,18 @@ fn main() {
 fn proton_caller(args: Vec<String>) -> Result<(), Error> {
     use jargon_args::Jargon;
 
-    let config = Config::open()?;
-    let mut parser = Jargon::from_vec(args);
+    let mut parser: Jargon = Jargon::from_vec(args);
 
     if parser.contains(["-h", "--help"]) {
         help();
     } else if parser.contains(["-v", "--version"]) {
         version();
     } else if parser.contains(["-i", "--index"]) {
+        let config: Config = Config::open()?;
         let common_index = Index::new(&config.common())?;
         println!("{}", common_index);
-    } else if parser.contains("--config") {
-        println!("{}", config);
     } else {
+        let config: Config = Config::open()?;
         let args = Args {
             program: parser.result_arg(["-r", "--run"])?,
             version: parser.option_arg(["-p", "--proton"]).unwrap_or_default(),
@@ -91,13 +90,13 @@ fn proton_caller(args: Vec<String>) -> Result<(), Error> {
 
 /// Runs caller in normal mode, running indexed Proton versions
 fn normal_mode(config: &Config, args: Args) -> Result<(), Error> {
-    let common_index = Index::new(&config.common())?;
-    let proton_path = match common_index.get(args.version) {
+    let common_index: Index = Index::new(&config.common())?;
+    let proton_path: PathBuf = match common_index.get(args.version) {
         Some(pp) => pp,
         None => return err!("Proton {} is not found", args.version),
     };
 
-    let proton = Proton::new(
+    let proton: Proton = Proton::new(
         args.version,
         proton_path,
         args.program,
@@ -117,7 +116,7 @@ fn normal_mode(config: &Config, args: Args) -> Result<(), Error> {
 /// Runs caller in custom mode, using a custom Proton path
 fn custom_mode(config: &Config, args: Args) -> Result<(), Error> {
     if let Some(custom) = args.custom {
-        let proton = Proton::new(
+        let proton: Proton = Proton::new(
             Version::from_custom(custom.as_path()),
             custom,
             args.program,
