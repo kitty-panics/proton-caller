@@ -14,7 +14,7 @@ Defaults to the latest version of Proton.
 proton-call -r foo.exe
 ```
 
-Defaults to the latest verison of Proton, all extra arguments passed to the executable.
+Defaults to the latest version of Proton, all extra arguments passed to the executable.
 ```
 proton-call -r foo.exe --goes --to program
 ```
@@ -32,161 +32,8 @@ proton-call -c '/path/to/Proton version' -r foo.exe
 ```
  */
 
-#[doc(hidden)]
-#[macro_export]
-macro_rules! err {
-    ($($arg:tt)*) => { Err($crate::Error::new(format!($($arg)*))) }
-}
-
-use std::collections::BTreeMap;
-use std::fmt::{Debug, Display, Formatter};
-use std::num::ParseIntError;
-use std::path::{Path, PathBuf};
-use std::process::ExitStatus;
-use std::str::FromStr;
-
-/// Config type for parsing config files
-#[derive(Debug, serde::Deserialize)]
-struct Config {
-    data: PathBuf,
-    steam: PathBuf,
-    common: Option<PathBuf>,
-}
-
-impl Config {
-    /// Opens and returns the user's config
-    pub fn open() -> Result<Config, Error> {
-        use std::fs::File;
-        use std::io::Read;
-
-        // Get default config location
-        let loc: PathBuf = Config::config_location()?;
-
-        // Open the config file
-        let mut file: File = match File::open(&loc) {
-            Ok(f) => f,
-            Err(e) => return err!("'{}' when opening config", e),
-        };
-
-        // Read the config into memory
-        let mut buffer: Vec<u8> = Vec::new();
-
-        if let Err(e) = file.read_to_end(&mut buffer) {
-            return err!("'{}' when reading config", e);
-        }
-
-        // Parse the config into `Config`
-        let slice = buffer.as_slice();
-
-        let mut config: Config = match toml::from_slice(slice) {
-            Ok(c) => c,
-            Err(e) => return err!("'{}' when parsing config", e),
-        };
-
-        config.default_common();
-
-        Ok(config)
-    }
-
-    /// Finds one of the two default config locations
-    pub fn config_location() -> Result<PathBuf, Error> {
-        use std::env::var;
-
-        if let Ok(val) = var("XDG_CONFIG_HOME") {
-            let path = format!("{}/proton.conf", val);
-            Ok(PathBuf::from(path))
-        } else if let Ok(val) = var("HOME") {
-            let path = format!("{}/.config/proton.conf", val);
-            Ok(PathBuf::from(path))
-        } else {
-            err!("cannot read required environment variables")
-        }
-    }
-
-    /// Sets a default common if not given by user
-    fn default_common(&mut self) {
-        if self.common.is_none() {
-            let common = self._default_common();
-            self.common = Some(common);
-        }
-    }
-
-    /// Generates a default common directory
-    fn _default_common(&self) -> PathBuf {
-        let steam = self.steam.to_string_lossy().to_string();
-        let common_str = format!("{}/steamapps/common/", steam);
-        PathBuf::from(common_str)
-    }
-
-    /// Returns the in use common directory
-    pub fn common(&self) -> PathBuf {
-        if let Some(common) = &self.common {
-            common.clone()
-        } else {
-            self._default_common()
-        }
-    }
-}
-
-/// Version type to handle Proton Versions
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
-enum Version {
-    /// Two number version
-    Mainline(u8, u8),
-    /// Experimental version
-    Experimental,
-    /// Custom version (will be replaced by Mainline if possible)
-    Custom,
-}
-
-impl Default for Version {
-    fn default() -> Self {
-        Version::Mainline(6, 3)
-    }
-}
-
-impl Version {
-    /// Creates a new `Version::Mainline` instance
-    pub fn new(major: u8, minor: u8) -> Version {
-        Version::Mainline(major, minor)
-    }
-
-    /// Tries parsing custom Proton path into `Version::Mainline`
-    pub fn from_custom(name: &Path) -> Version {
-        if let Some(n) = name.file_name() {
-            if let Ok(n) = n.to_string_lossy().to_string().parse() {
-                return n;
-            }
-        }
-
-        Version::Custom
-    }
-}
-
-impl Display for Version {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Version::Mainline(mj, mn) => write!(f, "{}.{}", mj, mn),
-            Version::Experimental => write!(f, "Experimental"),
-            Version::Custom => write!(f, "Custom"),
-        }
-    }
-}
-
-impl FromStr for Version {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.to_ascii_lowercase() == "experimental" {
-            return Ok(Version::Experimental);
-        }
-
-        match s.split('.').collect::<Vec<&str>>().as_slice() {
-            [maj, min] => Ok(Version::new(maj.parse()?, min.parse()?)),
-            _ => err!("failed to parse '{}'", s),
-        }
-    }
-}
+use proton_call::{err, Config, Error, Index, Proton, Version};
+use std::path::PathBuf;
 
 /// Type to handle and parse command line arguments with `Jargon`
 #[derive(Debug)]
@@ -221,6 +68,8 @@ fn proton_caller(args: Vec<String>) -> Result<(), Error> {
     } else if parser.contains(["-i", "--index"]) {
         let common_index = Index::new(&config.common())?;
         println!("{}", common_index);
+    } else if parser.contains("--config") {
+        println!("{}", config);
     } else {
         let args = Args {
             program: parser.result_arg(["-r", "--run"])?,
@@ -231,9 +80,9 @@ fn proton_caller(args: Vec<String>) -> Result<(), Error> {
         };
 
         if args.custom.is_some() {
-            custom_mode(config, args)?;
+            custom_mode(&config, args)?;
         } else {
-            normal_mode(config, args)?;
+            normal_mode(&config, args)?;
         }
     }
 
@@ -241,7 +90,7 @@ fn proton_caller(args: Vec<String>) -> Result<(), Error> {
 }
 
 /// Runs caller in normal mode, running indexed Proton versions
-fn normal_mode(config: Config, args: Args) -> Result<(), Error> {
+fn normal_mode(config: &Config, args: Args) -> Result<(), Error> {
     let common_index = Index::new(&config.common())?;
     let proton_path = match common_index.get(args.version) {
         Some(pp) => pp,
@@ -254,8 +103,8 @@ fn normal_mode(config: Config, args: Args) -> Result<(), Error> {
         args.program,
         args.args,
         args.log,
-        config.data,
-        config.steam,
+        config.data(),
+        config.steam(),
     );
 
     if proton.run()?.success() {
@@ -266,7 +115,7 @@ fn normal_mode(config: Config, args: Args) -> Result<(), Error> {
 }
 
 /// Runs caller in custom mode, using a custom Proton path
-fn custom_mode(config: Config, args: Args) -> Result<(), Error> {
+fn custom_mode(config: &Config, args: Args) -> Result<(), Error> {
     if let Some(custom) = args.custom {
         let proton = Proton::new(
             Version::from_custom(custom.as_path()),
@@ -274,8 +123,8 @@ fn custom_mode(config: Config, args: Args) -> Result<(), Error> {
             args.program,
             args.args,
             args.log,
-            config.data,
-            config.steam,
+            config.data(),
+            config.steam(),
         );
 
         if proton.run()?.success() {
@@ -285,205 +134,6 @@ fn custom_mode(config: Config, args: Args) -> Result<(), Error> {
         }
     } else {
         err!("failed to get custom path")
-    }
-}
-
-/// Index type to Index Proton versions in common
-#[derive(Debug)]
-struct Index {
-    dir: PathBuf,
-    map: BTreeMap<Version, PathBuf>,
-}
-
-impl Display for Index {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut str: String = format!(
-            "Indexed Directory: {}\n\nIndexed Proton Versions:\n",
-            self.dir.to_string_lossy()
-        );
-
-        for (version, path) in &self.map {
-            str = format!("{}\nProton {} `{}`", str, version, path.to_string_lossy());
-        }
-
-        write!(f, "{}", str)
-    }
-}
-
-impl Index {
-    /// Creates an index of Proton versions in given path
-    pub fn new(index: &Path) -> Result<Index, Error> {
-        let mut idx = Index {
-            dir: index.to_path_buf(),
-            map: BTreeMap::new(),
-        };
-        idx.index()?;
-        Ok(idx)
-    }
-
-    /// Retrieves the path of the requested Proton version
-    pub fn get(&self, version: Version) -> Option<PathBuf> {
-        let path = self.map.get(&version)?;
-        Some(path.clone())
-    }
-
-    /// Indexes Proton versions
-    fn index(&mut self) -> Result<(), Error> {
-        if let Ok(rd) = self.dir.read_dir() {
-            for result_entry in rd {
-                let entry = match result_entry {
-                    Ok(e) => e,
-                    Err(e) => return err!("'{}' when reading common", e),
-                };
-
-                let entry_path = entry.path();
-
-                if entry_path.is_dir() {
-                    let name = entry.file_name();
-                    let name = name.to_string_lossy().to_string();
-                    if name.starts_with("Proton ") {
-                        if let Some(version_str) = name.split(' ').last() {
-                            let version = version_str.parse()?;
-                            self.map.insert(version, entry_path);
-                        }
-                    }
-                }
-            }
-        } else {
-            return err!("can not read common dir");
-        }
-
-        Ok(())
-    }
-}
-
-/// Type to handle executing Proton
-#[derive(Debug)]
-struct Proton {
-    version: Version,
-    path: PathBuf,
-    program: PathBuf,
-    args: Vec<String>,
-    log: bool,
-    compat: PathBuf,
-    steam: PathBuf,
-}
-
-impl Proton {
-    /// Creates a new instance of `Proton`
-    pub fn new(
-        version: Version,
-        path: PathBuf,
-        program: PathBuf,
-        args: Vec<String>,
-        log: bool,
-        compat: PathBuf,
-        steam: PathBuf,
-    ) -> Proton {
-        Proton {
-            version,
-            path,
-            program,
-            args,
-            log,
-            compat,
-            steam,
-        }
-        .update_path()
-    }
-
-    /// Appends the executable to the path
-    fn update_path(mut self) -> Proton {
-        let mut str = self.path.to_string_lossy().to_string();
-        str = format!("{}/proton", str);
-        self.path = PathBuf::from(str);
-        self
-    }
-
-    /// Changes `compat` path to the version of Proton in use, creates the directory if doesn't already exist
-    pub fn run(mut self) -> Result<ExitStatus, Error> {
-        use std::io::ErrorKind;
-
-        let name = self.compat.to_string_lossy().to_string();
-        let newdir = format!("{}/Proton {}", name, self.version);
-
-        match std::fs::create_dir(&newdir) {
-            Ok(_) => self.compat = PathBuf::from(newdir),
-            Err(e) => {
-                if e.kind() == ErrorKind::AlreadyExists {
-                    self.compat = PathBuf::from(newdir);
-                } else {
-                    return err!("failed creating new directory: {}", e);
-                }
-            }
-        }
-
-        self.execute()
-    }
-
-    /// Executes Proton
-    fn execute(self) -> Result<ExitStatus, Error> {
-        use std::process::{Child, Command};
-
-        println!(
-            "Running Proton {} for {}",
-            self.version,
-            self.program.to_string_lossy()
-        );
-
-        let log: &str = if self.log { "1" } else { "0" };
-
-        let mut child: Child = match Command::new(&self.path)
-            .arg("run")
-            .arg(&self.program)
-            .args(&self.args)
-            .env("PROTON_LOG", log)
-            .env("STEAM_COMPAT_DATA_PATH", &self.compat)
-            .env("STEAM_COMPAT_CLIENT_INSTALL_PATH", &self.steam)
-            .spawn()
-        {
-            Ok(c) => c,
-            Err(e) => return err!("failed spawning child: {}\n{:#?}", e, self),
-        };
-
-        let status = match child.wait() {
-            Ok(e) => e,
-            Err(e) => return err!("failed waiting for child '{}': {}", child.id(), e),
-        };
-
-        Ok(status)
-    }
-}
-
-/// Error type which just contains a `String`
-#[derive(Debug)]
-struct Error(String);
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&self.0, f)
-    }
-}
-
-impl Error {
-    /// Creates a new instance of Error
-    pub fn new(info: String) -> Error {
-        Error(info)
-    }
-}
-
-impl From<ParseIntError> for Error {
-    fn from(pie: ParseIntError) -> Self {
-        Self(pie.to_string())
-    }
-}
-
-impl From<jargon_args::Error> for Error {
-    fn from(jae: jargon_args::Error) -> Self {
-        match jae {
-            jargon_args::Error::MissingArg(e) => Error::new(format!("missing argument: '{}'", e)),
-            jargon_args::Error::Other(e) => Error::new(e),
-        }
     }
 }
 

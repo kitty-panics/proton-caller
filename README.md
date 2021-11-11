@@ -19,7 +19,7 @@ Defaults to the latest version of Proton.
 proton-call -r foo.exe
 ```
 
-Defaults to the latest verison of Proton, all extra arguments passed to the executable.
+Defaults to the latest version of Proton, all extra arguments passed to the executable.
 ```
 proton-call -r foo.exe --goes --to program
 ```
