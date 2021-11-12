@@ -1,5 +1,8 @@
+use crate::{
+    error::{Error, Kind},
+    throw,
+};
 use std::borrow::Cow;
-use crate::{err, Error};
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 
@@ -30,23 +33,20 @@ impl Config {
         // Open the config file
         let mut file: File = match File::open(&loc) {
             Ok(f) => f,
-            Err(e) => return err!("'{}' when opening config", e),
+            Err(e) => throw!(Kind::ConfigOpen, "{}", e),
         };
 
         // Read the config into memory
         let mut buffer: Vec<u8> = Vec::new();
 
         if let Err(e) = file.read_to_end(&mut buffer) {
-            return err!("'{}' when reading config", e);
+            throw!(Kind::ConfigRead, "{}", e);
         }
 
         // Parse the config into `Config`
         let slice: &[u8] = buffer.as_slice();
 
-        let mut config: Config = match toml::from_slice(slice) {
-            Ok(c) => c,
-            Err(e) => return err!("'{}' when parsing config", e),
-        };
+        let mut config: Config = toml::from_slice(slice)?;
 
         config.default_common();
 
@@ -68,7 +68,7 @@ impl Config {
             let path = format!("{}/.config/proton.conf", val);
             Ok(PathBuf::from(path))
         } else {
-            err!("cannot read required environment variables")
+            throw!(Kind::Environment, "XDG_CONFIG_HOME / HOME missing")
         }
     }
 
