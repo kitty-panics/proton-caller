@@ -32,8 +32,10 @@ proton-call -c '/path/to/Proton version' -r foo.exe
 ```
  */
 
-use proton_call::{err, Config, Error, Index, Proton, Version};
+use proton_call::error::{Error, Kind};
+use proton_call::{pass, throw, Config, Index, Proton, Version};
 use std::path::PathBuf;
+use std::process::exit;
 
 /// Type to handle and parse command line arguments with `Jargon`
 #[derive(Debug)]
@@ -50,7 +52,9 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let program: String = args[0].split('/').last().unwrap_or(&args[0]).to_string();
     if let Err(e) = proton_caller(args) {
-        eprintln!("{}: error: {}", program, e);
+        eprintln!("{}: {}", program, e);
+        let code = e.kind() as i32;
+        exit(code);
     }
 }
 
@@ -78,10 +82,19 @@ fn proton_caller(args: Vec<String>) -> Result<(), Error> {
             args: parser.finish(),
         };
 
-        if args.custom.is_some() {
-            custom_mode(&config, args)?;
+        let proton = if args.custom.is_some() {
+            custom_mode(&config, args)?
         } else {
-            normal_mode(&config, args)?;
+            normal_mode(&config, args)?
+        };
+
+        let exit = proton.run()?;
+
+        if !exit.success() {
+            if let Some(code) = exit.code() {
+                throw!(Kind::ProtonExit, "code: {}", code);
+            }
+            throw!(Kind::ProtonExit, "an error");
         }
     }
 
@@ -89,11 +102,16 @@ fn proton_caller(args: Vec<String>) -> Result<(), Error> {
 }
 
 /// Runs caller in normal mode, running indexed Proton versions
-fn normal_mode(config: &Config, args: Args) -> Result<(), Error> {
+fn normal_mode(config: &Config, args: Args) -> Result<Proton, Error> {
     let common_index: Index = Index::new(&config.common())?;
+
     let proton_path: PathBuf = match common_index.get(args.version) {
         Some(pp) => pp,
-        None => return err!("Proton {} is not found", args.version),
+        None => throw!(
+            Kind::ProtonMissing,
+            "Proton {} does not exist",
+            args.version
+        ),
     };
 
     let proton: Proton = Proton::new(
@@ -106,15 +124,11 @@ fn normal_mode(config: &Config, args: Args) -> Result<(), Error> {
         config.steam(),
     );
 
-    if proton.run()?.success() {
-        Ok(())
-    } else {
-        err!("Proton exited with an error")
-    }
+    pass!(proton)
 }
 
 /// Runs caller in custom mode, using a custom Proton path
-fn custom_mode(config: &Config, args: Args) -> Result<(), Error> {
+fn custom_mode(config: &Config, args: Args) -> Result<Proton, Error> {
     if let Some(custom) = args.custom {
         let proton: Proton = Proton::new(
             Version::from_custom(custom.as_path()),
@@ -126,14 +140,10 @@ fn custom_mode(config: &Config, args: Args) -> Result<(), Error> {
             config.steam(),
         );
 
-        if proton.run()?.success() {
-            Ok(())
-        } else {
-            err!("Proton exited with an error")
-        }
-    } else {
-        err!("failed to get custom path")
+        return pass!(proton);
     }
+
+    throw!(Kind::Internal, "failed to run custom mode")
 }
 
 #[doc(hidden)]

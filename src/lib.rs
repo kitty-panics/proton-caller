@@ -11,24 +11,21 @@ This defines the internal API used in `proton-call` to run Proton
 */
 
 mod config;
-mod error;
 mod index;
 mod version;
 
-use std::borrow::Cow;
+/// Contains the `Error` and `ErrorKind` types
+pub mod error;
+
 pub use config::Config;
-pub use error::Error;
+use error::{Error, Kind};
 pub use index::Index;
+use std::borrow::Cow;
+use std::fs::create_dir;
 pub use version::Version;
 
 use std::path::PathBuf;
 use std::process::ExitStatus;
-
-#[doc(hidden)]
-#[macro_export]
-macro_rules! err {
-    ($($arg:tt)*) => { Err($crate::Error::new(format!($($arg)*))) }
-}
 
 /// Type to handle executing Proton
 #[derive(Debug)]
@@ -74,6 +71,37 @@ impl Proton {
         self
     }
 
+    fn create_p_dir(&mut self) -> Result<(), Error> {
+        let name: Cow<str> = self.compat.to_string_lossy();
+        let newdir: PathBuf = PathBuf::from(format!("{}/Proton {}", name, self.version));
+
+        if !newdir.exists() {
+            if let Err(e) = create_dir(&newdir) {
+                throw!(Kind::ProtonDir, "failed to create Proton directory: {}", e);
+            }
+        }
+
+        self.compat = newdir;
+
+        pass!()
+    }
+
+    fn check_proton(&self) -> Result<(), Error> {
+        if !self.path.exists() {
+            throw!(Kind::ProtonMissing, "{}", self.version);
+        }
+
+        pass!()
+    }
+
+    fn check_program(&self) -> Result<(), Error> {
+        if !self.program.exists() {
+            throw!(Kind::ProgramMissing, "{}", self.program.to_string_lossy());
+        }
+
+        pass!()
+    }
+
     /// Changes `compat` path to the version of Proton in use, creates the directory if doesn't already exist
     ///
     /// # Errors
@@ -82,22 +110,9 @@ impl Proton {
     /// * Creating a Proton compat env directory fails
     /// * Executing Proton fails
     pub fn run(mut self) -> Result<ExitStatus, Error> {
-        use std::io::ErrorKind;
-
-        let name: Cow<str> = self.compat.to_string_lossy();
-        let newdir: String = format!("{}/Proton {}", name, self.version);
-
-        match std::fs::create_dir(&newdir) {
-            Ok(_) => self.compat = PathBuf::from(newdir),
-            Err(e) => {
-                if e.kind() == ErrorKind::AlreadyExists {
-                    self.compat = PathBuf::from(newdir);
-                } else {
-                    return err!("failed creating new directory: {}", e);
-                }
-            }
-        }
-
+        self.create_p_dir()?;
+        self.check_proton()?;
+        self.check_program()?;
         self.execute()
     }
 
@@ -123,14 +138,14 @@ impl Proton {
             .spawn()
         {
             Ok(c) => c,
-            Err(e) => return err!("failed spawning child: {}\n{:#?}", e, self),
+            Err(e) => throw!(Kind::ProtonSpawn, "{}\nDebug:\n{:#?}", e, self),
         };
 
         let status: ExitStatus = match child.wait() {
             Ok(e) => e,
-            Err(e) => return err!("failed waiting for child '{}': {}", child.id(), e),
+            Err(e) => throw!(Kind::ProtonWait, "'{}': {}", child.id(), e),
         };
 
-        Ok(status)
+        pass!(status)
     }
 }

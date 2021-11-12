@@ -1,4 +1,7 @@
-use crate::{err, Error, Version};
+use crate::error::{Error, Kind};
+use crate::{pass, throw, Version};
+use lliw::Fg::LightYellow as Yellow;
+use lliw::Reset;
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fmt::{Display, Formatter};
@@ -68,9 +71,11 @@ impl Index {
     fn index(&mut self) -> Result<(), Error> {
         if let Ok(rd) = self.dir.read_dir() {
             for result_entry in rd {
-                let entry: DirEntry = match result_entry {
-                    Ok(e) => e,
-                    Err(e) => return err!("'{}' when reading common", e),
+                let entry: DirEntry = if let Ok(e) = result_entry {
+                    e
+                } else {
+                    eprintln!("{}warning:{} failed indexing a directory...", Yellow, Reset);
+                    continue;
                 };
 
                 let entry_path: PathBuf = entry.path();
@@ -86,9 +91,9 @@ impl Index {
                 }
             }
         } else {
-            return err!("can not read common dir");
+            throw!(Kind::IndexReadDir, "can not read common dir");
         }
 
-        Ok(())
+        pass!()
     }
 }
