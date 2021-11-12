@@ -45,6 +45,7 @@ impl Error {
         Error { inner, kind }
     }
 
+    #[must_use]
     /// returns Error kind
     pub fn kind(&self) -> Kind {
         self.kind
