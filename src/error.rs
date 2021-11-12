@@ -2,7 +2,6 @@ use lliw::Fg::Red;
 use lliw::Reset;
 use std::fmt::{Display, Formatter};
 use std::num::ParseIntError;
-use std::error::Error as ErrorTrait;
 
 /// Simple macro rapper for `Result::Ok(T)`
 ///
@@ -47,8 +46,6 @@ pub struct Error {
     // file: Option<String>,
     kind: Kind,
 }
-
-impl ErrorTrait for Error {}
 
 impl Error {
     #[must_use]
