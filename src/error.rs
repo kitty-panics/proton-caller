@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter};
 use std::num::ParseIntError;
+use std::error::Error as ErrorTrait;
 
 /// Error type which just contains a `String`
 #[derive(Debug)]
@@ -11,6 +12,8 @@ impl Display for Error {
     }
 }
 
+impl ErrorTrait for Error {}
+
 impl Error {
     #[must_use]
     /// Creates a new instance of Error
@@ -21,15 +24,15 @@ impl Error {
 
 impl From<ParseIntError> for Error {
     fn from(pie: ParseIntError) -> Self {
-        Self(pie.to_string())
+        Self::new(pie.to_string())
     }
 }
 
 impl From<jargon_args::Error> for Error {
     fn from(jae: jargon_args::Error) -> Self {
         match jae {
-            jargon_args::Error::MissingArg(e) => Error::new(format!("missing argument: '{}'", e)),
-            jargon_args::Error::Other(e) => Error::new(e),
+            jargon_args::Error::MissingArg(e) => Self::new(format!("missing argument: '{}'", e)),
+            jargon_args::Error::Other(e) => Self::new(e),
         }
     }
 }
