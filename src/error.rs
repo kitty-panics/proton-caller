@@ -4,15 +4,6 @@ use std::fmt::{Display, Formatter};
 use std::num::ParseIntError;
 
 /// Simple macro rapper for `Result::Ok(T)`
-///
-/// ```
-/// assert_eq!(Ok(()), pass!())
-/// ```
-///
-/// ```
-/// let var: String = String::from("ahaha");
-/// assert_eq!(Ok("ahaha"), pass!(var))
-/// ```
 #[macro_export]
 macro_rules! pass {
     () => {
