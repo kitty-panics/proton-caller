@@ -1,4 +1,4 @@
-use crate::{err, Error};
+use crate::{pass, throw, Error, Kind};
 use std::fmt::{Display, Formatter};
 use std::path::Path;
 use std::str::FromStr;
@@ -31,8 +31,11 @@ impl Version {
     /// Tries parsing custom Proton path into `Version::Mainline`
     pub fn from_custom(name: &Path) -> Version {
         if let Some(n) = name.file_name() {
-            if let Ok(n) = n.to_string_lossy().parse() {
-                return n;
+            let name_str = n.to_string_lossy().to_string();
+            if let Some(version_str) = name_str.split(' ').last() {
+                if let Ok(version) = version_str.parse() {
+                    return version;
+                }
             }
         }
 
@@ -55,12 +58,12 @@ impl FromStr for Version {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.to_ascii_lowercase() == "experimental" {
-            return Ok(Version::Experimental);
+            return pass!(Version::Experimental);
         }
 
         match s.split('.').collect::<Vec<&str>>().as_slice() {
-            [maj, min] => Ok(Version::new(maj.parse()?, min.parse()?)),
-            _ => err!("failed to parse '{}'", s),
+            [maj, min] => pass!(Version::new(maj.parse()?, min.parse()?)),
+            _ => throw!(Kind::VersionParse, "'{}'", s),
         }
     }
 }
