@@ -157,8 +157,8 @@ Options:
     -l, --log               Pass PROTON_LOG variable to Proton
     -p, --proton [VERSION]  Use Proton VERSION from `common`
     -r, --run EXE           Run EXE in proton
-    -v, --verbose           Run in verbose mode
-    -V, --version           View version information
+    -V, --verbose           Run in verbose mode
+    -v, --version           View version information
 
 Config:
     The config file should be located at '$XDG_CONFIG_HOME/proton.conf' or '$HOME/.config/proton.conf'
